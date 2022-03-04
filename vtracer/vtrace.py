@@ -16,7 +16,7 @@ def vtrace(directory, path_to_vtracer):
 
     output_directory = directory + "_vectorized"
     if not os.path.exists(output_directory):
-        shutil.copytree(directory, output_directory)
+        shutil.copytree(directory, output_directory, ignore=ignore_files)
 
     for root, dirs, files in os.walk(directory):
         for file in files:
