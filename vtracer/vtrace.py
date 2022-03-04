@@ -2,24 +2,19 @@ import os
 import sys
 
 def vtrace(directory, path_to_vtracer):
-
-    # Check if the directory exists
     if not os.path.exists(directory):
         print("The directory does not exist")
         sys.exit(1)
 
-    # Check if the path to vtracer exists
     if not os.path.exists(path_to_vtracer):
         print("The path to vtracer does not exist")
         sys.exit(1)
 
-    # Create a directory for the output
     output_directory = directory + "_vectorized"
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
 
     for root, dirs, files in os.walk(directory):
-        # Make all dirs in the output directory
         for d in dirs:
             if not os.path.exists(output_directory + "/" + d):
                 os.makedirs(output_directory + "/" + d)
