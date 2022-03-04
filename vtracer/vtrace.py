@@ -1,8 +1,6 @@
 import os
 import sys
 
-# Write a function that goes through a directory of images and executes ./vtrace --input <image> --output <image> on each image.
-
 def vtrace(directory, save_dir, path_to_vtracer):
     for root, dirs, files in os.walk(directory):
         for file in files:
