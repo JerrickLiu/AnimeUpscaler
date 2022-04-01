@@ -16,7 +16,6 @@ from scenedetect import SceneManager
 from scenedetect import StatsManager
 from scenedetect.detectors import ContentDetector
 
-SAVING_FRAMES_PER_SECOND = 60
 CLIP_LENGTH_SECONDS = 180
 DATA_PATH = os.environ["disk"]
 
@@ -96,6 +95,10 @@ def format_timedelta(td):
     ms = round(ms / 1e4)
     return f"{result}.{ms:02}".replace(":", "-")
 
+def get_ms_timedelta(td):
+    """Utility function to convert timedelta objects to milliseconds"""
+    return td.total_seconds() * 1000
+
 def get_saving_frames_durations(cap, saving_fps):
     """A function that returns the list of durations where to save the frames"""
     s = []
@@ -106,7 +109,9 @@ def get_saving_frames_durations(cap, saving_fps):
         s.append(i)
     return s
 
-def main(video_dir):
+def main(video_dir, CACHE_DIR=None):
+    if CACHE_DIR is None:
+        print("WARNING: CACHE_DIR is not set, expect slow performance")
     if not os.path.exists(video_dir):
         print("The directory does not exist")
         sys.exit(1)
@@ -122,18 +127,27 @@ def main(video_dir):
 
                 filename, _ = os.path.splitext(file)
                 frame_folder = filename + "-extracted_frames"
-                frame_folder = os.path.join(output_directory, frame_folder)
+                frame_folder = os.path.join(output_directory, 'extracted_frames', frame_folder)
 
                 csv_folder = filename + "-csv"
-                csv_folder = os.path.join(output_directory, csv_folder)
+                csv_folder = os.path.join(output_directory, 'metadata', csv_folder)
 
                 # Cehck if the folder exists, if not, create it
                 if not os.path.exists(frame_folder):
-                    os.mkdir(frame_folder)
-                    os.mkdir(csv_folder)
+                    # Check if cache folder exists, else set to frame_folder
+                    if CACHE_DIR is None:
+                        working_dir = frame_folder
+                    else:
+                        working_dir = CACHE_DIR
+                        if not os.path.exists(working_dir):
+                            os.makedirs(working_dir)
+
+                    # make directory with all parent diectories if they do not exist
+                    os.makedirs(frame_folder)
+                    os.makedirs(csv_folder)
 
                     # Clip video to 3 minutes.
-                    clip_path = os.path.join(frame_folder, filename + "-clipped" + os.path.splitext(file)[1])
+                    clip_path = os.path.join(working_dir, filename + "-clipped" + os.path.splitext(file)[1])
                     
                     # ffmpeg_extract_subclip("full.mp4", start_seconds, end_seconds, targetname="cut.mp4")
                     ffmpeg_extract_subclip(full_path, 0, CLIP_LENGTH_SECONDS, targetname=clip_path)
@@ -145,7 +159,6 @@ def main(video_dir):
                     # get the FPS of the video
                     fps = cap.get(cv2.CAP_PROP_FPS)
                     saving_frames_per_second = fps
-
                     # if the SAVING_FRAMES_PER_SECOND is above video FPS, then set it to FPS (as maximum)
                     # saving_frames_per_second = min(fps, SAVING_FRAMES_PER_SECOND)
                     # get the list of duration spots to save
@@ -170,8 +183,14 @@ def main(video_dir):
                             # if closest duration is less than or equals the frame duration, 
                             # then save the frame
                             frame_duration_formatted = format_timedelta(timedelta(seconds=frame_duration))
-
-                            output_file = frame_folder + f"/frame{frame_duration_formatted}.jpg"
+                            # save the frame
+                            # output_file = working_dir + f"/frame{frame_duration_formatted}.jpg"
+                            output_file = working_dir + f"/frame_{count}.jpg"
+                            
+                            #resize frame so that the smallest side is height px. Preserves aspect ratio
+                            height=240
+                            width = int(frame.shape[1] * height / frame.shape[0])
+                            frame = cv2.resize(frame, (width, height))
 
                             cv2.imwrite(output_file, frame) 
                             # drop the duration spot from the list, since this duration spot is already saved
@@ -182,12 +201,23 @@ def main(video_dir):
                         # increment the frame count
                         count += 1
 
-                    # Delete the clipped video file
+                    # Delete the clipped video file from working dir
                     os.remove(clip_path)                
+
+                    if working_dir != frame_folder:
+                        # If the cache folder is set, then we need to move the files to the frame folder
+                        for file in os.listdir(working_dir):
+                            if file.endswith(".jpg"):
+                                shutil.move(os.path.join(working_dir, file), os.path.join(frame_folder, file))
+                        # Delete the cache folder
+                        shutil.rmtree(working_dir)
+                        if not os.path.exists(working_dir):
+                            os.makedirs(working_dir)
                 else:
                     print("The folder already exists!")
                     continue
 
 if __name__ == "__main__":
-    DATA_PATH += "/test_fight_scenes"
-    main(DATA_PATH)
+    DATA_PATH += "/fight_scenes"
+    CACHE_PATH = "/home/jerrick/ramdisk/cache" # cache extracted before writing to slow disk later.
+    main(DATA_PATH, CACHE_PATH)
