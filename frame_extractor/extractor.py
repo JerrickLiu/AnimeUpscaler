@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import os
 import shutil
-from scenedetect import VideoManager
+from scenedetect import VideoManager 
 from scenedetect import SceneManager
 from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
 
@@ -11,13 +11,13 @@ from moviepy.video.io.ffmpeg_tools import ffmpeg_extract_subclip
 from scenedetect.detectors import ContentDetector
 
 import scenedetect
-from scenedetect import VideoManager
+from scenedetect import VideoManager 
 from scenedetect import SceneManager
 from scenedetect import StatsManager
 from scenedetect.detectors import ContentDetector
 
 CLIP_LENGTH_SECONDS = 180
-DATA_PATH = os.environ["disk"]
+DATA_PATH = "/home/jerrick/disk_mount/anime_data"#os.environ["disk"]
 
 def detect_scenes(video_path, save_path, filename):
     # type: (str) -> List[Tuple[FrameTimecode, FrameTimecode]]
@@ -126,6 +126,11 @@ def main(video_dir, CACHE_DIR=None):
                 full_path = os.path.join(root, file)
 
                 filename, _ = os.path.splitext(file)
+
+                # Sanitized filename
+                filename = "".join(x if x.isalnum() else "_" for x in filename)
+                filename = filename.replace(" ","_")
+
                 frame_folder = filename + "-extracted_frames"
                 frame_folder = os.path.join(output_directory, 'extracted_frames', frame_folder)
 
@@ -218,6 +223,6 @@ def main(video_dir, CACHE_DIR=None):
                     continue
 
 if __name__ == "__main__":
-    DATA_PATH += "/fight_scenes"
+    DATA_PATH += "/big"
     CACHE_PATH = "/home/jerrick/ramdisk/cache" # cache extracted before writing to slow disk later.
     main(DATA_PATH, CACHE_PATH)
