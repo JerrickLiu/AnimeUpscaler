@@ -1,0 +1,14 @@
+__pycache__/
+*/__pycache__/
+*.pyc
+datasets/*
+*.py~
+models/rfr_model/models/
+models/rfr_model/models/*
+*.zip
+anime_interp_full.ckpt
+
+
+
+
+
