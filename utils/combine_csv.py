@@ -20,9 +20,6 @@ def combine_csv(csv_path):
         df['file_name'] = file_name
         dfs.append(df)
 
-        # Remove the original csv file
-        os.remove(f)
-
 
     df = pd.concat(dfs, ignore_index=True)
     df.to_csv(csv_path + 'all_scenes.csv', index=False)
