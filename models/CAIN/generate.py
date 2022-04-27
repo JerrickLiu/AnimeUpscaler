@@ -11,12 +11,30 @@ from tqdm import tqdm
 
 import config
 import utils
-
+import cv2
 
 ##### Parse CmdLine Arguments #####
 args, unparsed = config.get_args()
 cwd = os.getcwd()
-print(args)
+# print(args)
+
+def make_video(original_video_path, frame_folder_path, video_name):
+    images = [img for img in sorted(os.listdir(frame_folder_path)) if img.endswith(".png") or img.endswith(".jpg")]
+
+    frame = cv2.imread(os.path.join(frame_folder_path, images[0]))
+    height, width, layers = frame.shape
+
+    videoCapture = cv2.VideoCapture(original_video_path)
+    fps = int(videoCapture.get(cv2.CAP_PROP_FPS))
+
+    fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
+
+    video = cv2.VideoWriter(video_name, fourcc, fps * 4, (width,height))
+
+    for image in sorted(images):
+        video.write(cv2.imread(os.path.join(frame_folder_path, image)))
+
+    video.release()
 
 
 device = torch.device('cuda' if args.cuda else 'cpu')
@@ -26,9 +44,6 @@ torch.backends.cudnn.benchmark = True
 torch.manual_seed(args.random_seed)
 if args.cuda:
     torch.cuda.manual_seed(args.random_seed)
-
-
-
 
 ##### Build Model #####
 if args.model.lower() == 'cain_encdec':
@@ -99,8 +114,10 @@ def test(args, epoch):
                             i2 = 1.0
                     except ValueError:
                         i2 = 1.0
+
                     fpos = max(0, fp.rfind('_'))
-                    fInd = (i1 + i2) / 2
+
+                    fInd = i1 + i2 / 2
                     savepath = "%s_%06f.%s" % (fp[:fpos], fInd, args.img_fmt)
                     utils.save_image(out[b], savepath)
                     
@@ -119,6 +136,7 @@ def main(args):
         # run test
         test(args, args.start_epoch)
 
+    make_video(args.orig_video_path, args.data_root, args.save_video_path)
 
 if __name__ == "__main__":
     main(args)
