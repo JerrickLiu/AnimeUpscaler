@@ -25,10 +25,10 @@ from utils.combine_csv import combine_csv
 CLIP_LENGTH_SECONDS = 180
 DATA_PATH = "/media/sahil/DL_5TB/MachineLearning/anime_playlist_downloads/fight_scenes"
 
-CACHE_PATH = "/home/jerrick/ramdisk/fight_cache" # cache extracted before writing to slow disk later.
+CACHE_PATH = "/home/jerrick/ramdisk/fight_cache/" # cache extracted before writing to slow disk later.
 
 # File length for lexical sorting
-FILE_LENTH = 15
+FILE_LENGTH = 12
 
 def detect_scenes(video_path, save_path, filename):
     # type: (str) -> List[Tuple[FrameTimecode, FrameTimecode]]
@@ -94,32 +94,6 @@ def detect_scenes(video_path, save_path, filename):
 def ignore_files(dir, files):
     return [f for f in files if os.path.isfile(os.path.join(dir, f))]
 
-def format_timedelta(td):
-    """Utility function to format timedelta objects in a cool way (e.g 00:00:20.05) 
-    omitting microseconds and retaining milliseconds"""
-    result = str(td)
-    try:
-        result, ms = result.split(".")
-    except ValueError:
-        return result + ".00".replace(":", "-")
-    ms = int(ms)
-    ms = round(ms / 1e4)
-    return f"{result}.{ms:02}".replace(":", "-")
-
-def get_ms_timedelta(td):
-    """Utility function to convert timedelta objects to milliseconds"""
-    return td.total_seconds() * 1000
-
-def get_saving_frames_durations(cap, saving_fps):
-    """A function that returns the list of durations where to save the frames"""
-    s = []
-    # get the clip duration by dividing number of frames by the number of frames per second
-    clip_duration = cap.get(cv2.CAP_PROP_FRAME_COUNT) / cap.get(cv2.CAP_PROP_FPS)
-    # use np.arange() to make floating-point steps
-    for i in np.arange(0, clip_duration, 1 / saving_fps):
-        s.append(i)
-    return s
-
 def extract(video_dir, output_directory, CACHE_DIR=None):
     if CACHE_DIR is None:
         print("WARNING: CACHE_DIR is not set, expect slow performance")
@@ -147,7 +121,7 @@ def extract(video_dir, output_directory, CACHE_DIR=None):
                 csv_folder = filename + "-csv"
                 csv_folder = os.path.join(output_directory, 'metadata', csv_folder)
 
-                # Cehck if the folder exists, if not, create it
+                # Check if the folder exists, if not, create it
                 if not os.path.exists(frame_folder):
                     # Check if cache folder exists, else set to frame_folder
                     if CACHE_DIR is None:
@@ -163,12 +137,14 @@ def extract(video_dir, output_directory, CACHE_DIR=None):
 
                     clip_path = os.path.join(working_dir, filename + "-clipped" + os.path.splitext(file)[1])
                     
-                    # Clip a random 3 minute clip from the middle of the video
+
                     video = cv2.VideoCapture(full_path)
 
                     # get the FPS of the video and total frames
                     fps = video.get(cv2.CAP_PROP_FPS)
                     frame_count = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+
+                    video.release()
 
                     try:
                         duration = int(frame_count / fps)
@@ -184,7 +160,7 @@ def extract(video_dir, output_directory, CACHE_DIR=None):
 
                     clip_length = min(CLIP_LENGTH_SECONDS, duration - start)
 
-                    # ffmpeg_extract_subclip("full.mp4", start_seconds, end_seconds, targetname="cut.mp4")
+                    # Clip a random 3 minute clip from the middle of the video
                     ffmpeg_extract_subclip(full_path, start, start + clip_length, targetname=clip_path)
 
                     detect_scenes(clip_path, csv_folder, filename)
@@ -193,10 +169,6 @@ def extract(video_dir, output_directory, CACHE_DIR=None):
                     cap = cv2.VideoCapture(clip_path)
                     # fps = cap.get(cv2.CAP_PROP_FPS)
                     saving_frames_per_second = fps
-                    # if the SAVING_FRAMES_PER_SECOND is above video FPS, then set it to FPS (as maximum)
-                    # saving_frames_per_second = min(fps, SAVING_FRAMES_PER_SECOND)
-                    # get the list of duration spots to save
-                    saving_frames_durations = get_saving_frames_durations(cap, saving_frames_per_second)
 
                     # start the loop
                     count = 0 
@@ -205,39 +177,25 @@ def extract(video_dir, output_directory, CACHE_DIR=None):
                         if not is_read:
                             # break out of the loop if there are no frames to read
                             break
-                        # get the duration by dividing the frame count by the FPS
-                        frame_duration = count / fps
-                        try:
-                            # get the earliest duration to save
-                            closest_duration = saving_frames_durations[0]
-                        except IndexError:
-                            # the list is empty, all duration frames were saved
-                            break
 
-                        if frame_duration >= closest_duration:
-                            # if closest duration is less than or equals the frame duration, then save the frame
+                        new_file = f"{count}.png"
 
-                            new_file = f"/{count}.png"
-                            output_file = working_dir + new_file
+                        # Prepend 0s so that the file name is of length FILE_LENGTH for lexical ordering
+                        new_file = "0" * (FILE_LENGTH - len(new_file)) + new_file
 
-                            # Prepend 0s so that the file name is of length FILE_LENGTH for lexical ordering
-                            new_file = "0" * (FILE_LENGTH - len(new_file)) + new_file
-                            
-                            #resize frame so that the smallest side is height px. Preserves aspect ratio
-                            height = 240
-                            width = int(frame.shape[1] * height / frame.shape[0])
-                            frame = cv2.resize(frame, (width, height))
+                        output_file = working_dir + new_file
 
-                            cv2.imwrite(output_file, frame) 
+                        #resize frame so that the smallest side is height px. Preserves aspect ratio
+                        height = 240
+                        width = int(frame.shape[1] * height / frame.shape[0])
+                        frame = cv2.resize(frame, (width, height))
 
-                            # drop the duration spot from the list, since this duration spot is already saved
-                            try:
-                                saving_frames_durations.pop(0)
-                            except IndexError:
-                                pass
+                        cv2.imwrite(output_file, frame)
+
                         # increment the frame count
                         count += 1
 
+                    cap.release()
                     # Delete the clipped video file from working dir
                     os.remove(clip_path)                
 
@@ -261,4 +219,4 @@ if __name__ == "__main__":
     extract(DATA_PATH, output_directory, CACHE_PATH)
     
     # Combine all the metadata into one csv file
-    combine_csv(output_directory + "/metadata")
+    combine_csv(output_directory + "/metadata/")
