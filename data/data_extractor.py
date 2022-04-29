@@ -17,10 +17,11 @@ from scenedetect import StatsManager
 from scenedetect.detectors import ContentDetector
 import random
 import sys
+import splitfolders
 
 sys.path.append('../')
 
-from utils.combine_csv import combine_csv
+from utils.data_utils import *
 
 CLIP_LENGTH_SECONDS = 180
 DATA_PATH = "/media/sahil/DL_5TB/MachineLearning/anime_playlist_downloads/fight_scenes"
@@ -68,14 +69,6 @@ def detect_scenes(video_path, save_path, filename):
         # Obtain list of detected scenes.
         scene_list = scene_manager.get_scene_list()
         # Each scene is a tuple of (start, end) FrameTimecodes.
-
-        # print('List of scenes obtained:')
-        # for i, scene in enumerate(scene_list):
-        #     print(
-        #         'Scene %2d: Start %s / Frame %d, End %s / Frame %d' % (
-        #         i+1,
-        #         scene[0].get_timecode(), scene[0].get_frames(),
-        #         scene[1].get_timecode(), scene[1].get_frames(),))
 
         # We only write to the stats file if a save is required:
         if stats_manager.is_save_required():
@@ -212,11 +205,15 @@ def extract(video_dir, output_directory, CACHE_DIR=None):
                     print("The folder already exists!")
                     continue
 
+
 if __name__ == "__main__":
     output_directory = DATA_PATH + "_extracted_frames"
 
     # Extract the frames
     extract(DATA_PATH, output_directory, CACHE_PATH)
     
-    # Combine all the metadata into one csv file
+    # Combine all the metadata into one csv file. Found in data_utils.py
     combine_csv(output_directory + "/metadata/")
+
+    # Split the data into train and test. Found in data_utils.py
+    train_test_split(output_directory + "/extracted_frames/")
