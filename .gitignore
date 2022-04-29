@@ -1,0 +1,8 @@
+*results.txt
+models/AnimeInterp
+*.pth
+*.pyc
+*.png
+*.jpg
+*.rs
+events.out.tfevent*
