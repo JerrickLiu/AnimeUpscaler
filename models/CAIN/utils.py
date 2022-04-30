@@ -42,7 +42,18 @@ def load_dataset(dataset_str, data_root, batch_size, test_batch_size, num_worker
         from data.aim import get_loader
     elif dataset_str == 'custom':
         from data.video import get_loader
+
+        test_loader = get_loader('test', data_root, test_batch_size, img_fmt=img_fmt, shuffle=False, num_workers=num_workers)
+
+        return test_loader
+        
+    elif dataset_str == 'anime_fight':
+        from data.AnimationDataset import get_loader
+
+        # train_loader = get_loader('train', data_root, batch_size, shuffle=True, num_workers=num_workers)
+
         test_loader = get_loader('test', data_root, test_batch_size, img_fmt=img_fmt, shuffle=False, num_workers=num_workers, n_frames=1)
+
         return test_loader
     else:
         raise NotImplementedError('Training / Testing for this dataset is not implemented.')
@@ -51,7 +62,7 @@ def load_dataset(dataset_str, data_root, batch_size, test_batch_size, num_worker
     if dataset_str == 'aim':
         test_loader = get_loader('val', data_root, test_batch_size, shuffle=False, num_workers=num_workers)
     else:
-        test_loader = get_loader('test', data_root, test_batch_size, shuffle=False, num_workers=num_workers)
+        test_loader = get_loader('test', data_root, test_batch_size, img_fmt=img_fmt, shuffle=False, num_workers=num_workers)
 
     return train_loader, test_loader
 
