@@ -19,6 +19,7 @@ data_arg.add_argument('--data_root', type=str, default='data/vimeo_triplet')
 data_arg.add_argument('--orig_video_path', type=str, default=None)
 data_arg.add_argument('--save_video_path', type=str, default=None)
 data_arg.add_argument('--test_data_root', type=str, default='data/vimeo_triplet')
+data_arg.add_argument('--checkpoint_path', type=str, default=None)
 data_arg.add_argument('--img_fmt', type=str, default='png')
 
 # Model
