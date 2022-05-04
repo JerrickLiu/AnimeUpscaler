@@ -195,18 +195,21 @@ class ResidualGroup(nn.Module):
 
 
 def pixel_shuffle(input, scale_factor):
-    batch_size, channels, in_height, in_width = input.size()
+    input_tensor = input.clone()
+
+    batch_size, channels, in_height, in_width = input_tensor.size()
 
     out_channels = int(int(channels / scale_factor) / scale_factor)
     out_height = int(in_height * scale_factor)
     out_width = int(in_width * scale_factor)
 
+
     if scale_factor >= 1:
-        input_view = input.contiguous().view(batch_size, out_channels, scale_factor, scale_factor, in_height, in_width)
+        input_view = input_tensor.contiguous().view(batch_size, out_channels, scale_factor, scale_factor, in_height, in_width)
         shuffle_out = input_view.permute(0, 1, 4, 2, 5, 3).contiguous()
     else:
         block_size = int(1 / scale_factor)
-        input_view = input.contiguous().view(batch_size, channels, out_height, block_size, out_width, block_size)
+        input_view = input_tensor.contiguous().view(batch_size, channels, out_height, block_size, out_width, block_size)
         shuffle_out = input_view.permute(0, 1, 3, 5, 2, 4).contiguous()
 
     return shuffle_out.view(batch_size, out_channels, out_height, out_width)
@@ -369,7 +372,7 @@ class VectorIntermediateInterpolation(nn.Module):
         super(VectorIntermediateInterpolation, self).__init__()
 
         # define modules: head, body, tail
-        self.headConv = conv3x3(n_feats * 2, n_feats)
+        self.headConv = conv3x3(n_feats, n_feats)
 
         modules_body = [
             ResidualGroup(
@@ -385,12 +388,9 @@ class VectorIntermediateInterpolation(nn.Module):
 
         self.tailConv = conv3x3(n_feats, n_feats)
 
-    def forward(self, x0, x1, x2):
+    def forward(self, intermediate):
         # Build input tensor
-        x = torch.cat([x0, x1], dim=1)
-        print(x.shape)
-        print(x2.shape)
-        x = self.headConv(x)
+        x = self.headConv(intermediate)
 
         res = self.body(x)
         res += x
