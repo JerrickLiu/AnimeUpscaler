@@ -195,7 +195,7 @@ def kmeans_centroids(segments, translations, color, k, return_seg_centroids=True
     """
     s_centroids = [weighted_centroid(segments[i], translations[i]) for i in range(len(segments))]
     s_centroids = np.array(s_centroids) # (#segments, 2)
-    print(s_centroids.shape)
+    # print(s_centroids.shape)
     # print(segment_centroids)
 
     # append color to segment_centroids
