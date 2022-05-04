@@ -6,9 +6,11 @@ import sys
 import PIL
 from .svg_utils import *
 import linecache
-from io import BytesIO
+from io import BytesIO, StringIO
 import torch
 from torchvision import transforms
+from threading import Thread, Lock
+import numpy as np
 
 def render_clusters(svg_file, cluster_func=kmeans_centroids):
     """
@@ -41,7 +43,22 @@ def render_clusters(svg_file, cluster_func=kmeans_centroids):
         cluster_file.close()
         render_svg('clusters_tmp_k_box.svg', segment_centroids[cluster])
 
-def render_clusters_correspondence(svg_frame1, svg_frame3, svg_frame1_info, svg_frame3_info, correspondences, cluster_func=kmeans_centroids):
+def batch_render_clusters_correspondence(svg_files, svg_infos, sim, num_segments, cluster_func=kmeans_centroids):
+    worker_queue = list(np.arange(len(svg_files)))
+    workers = []
+    all_renders = [None] * len(svg_files)
+    for i in range(0, len(svg_files)):
+        worker = Thread(target=render_clusters_correspondence, args=(svg_files[i][0], svg_files[i][2], svg_infos[i][0], svg_infos[i][2], sim[i][:num_segments[i][0], :num_segments[i][2]], cluster_func, all_renders, i))
+        worker.start()
+        workers.append(worker)
+
+    for worker in workers:
+        worker.join()
+
+    masks = torch.stack(all_renders, dim=0)
+    return masks
+
+def render_clusters_correspondence(svg_frame1, svg_frame3, svg_frame1_info, svg_frame3_info, correspondences, cluster_func=kmeans_centroids, place_result=None, place_idx=None):
     """
     Render all clusters in SVG file (frame1) and all corresponding clusters in frame3
     @param svg_frame1: svg file for frame 1
@@ -68,7 +85,8 @@ def render_clusters_correspondence(svg_frame1, svg_frame3, svg_frame1_info, svg_
     # print("Clusters1", len(clusters1))
     # print("Filename1", svg_frame1)
     # print("Filename3", svg_frame3)
-    cluster3_prerender = all_segments_prerender(lines3)
+    # cluster3_prerender = all_segments_prerender(lines3)
+    cluster3_prerender = parallel_prerender(lines3)
     # print("Clusters3", len(cluster3_prerender))
     # TODO: fix dim misalignment
     summed_correspond = torch.stack([torch.sum(correspondences[clusters1[c]], dim=0) for c in range(len(clusters1))], dim=0)
@@ -82,7 +100,11 @@ def render_clusters_correspondence(svg_frame1, svg_frame3, svg_frame1_info, svg_
         # print(c.shape)
     cluster3_renders = torch.stack(c3_render_list, dim=0)
 
-    return torch.stack([cluster1_renders, cluster3_renders], dim=0)
+    res = torch.stack([cluster1_renders, cluster3_renders], dim=0)
+    if place_result is not None:
+        place_result[place_idx] = res
+    else:
+        return res
 
 
 def color_to(line, color):
@@ -91,6 +113,61 @@ def color_to(line, color):
     # replace color
     line = line[:color_idx] + color + line[color_idx + 7:]
     return line
+
+def prerender_worker(svg_file_lines, worker_queue, lock, all_images):
+    """
+    Worker function for parallel rendering.
+    """
+    frame_size = (1, 1, 240, 424)
+    while True:
+        lock.acquire()
+        if len(worker_queue) == 0:
+            lock.release()
+            return
+        idx = worker_queue.pop()
+        # print("Worker working on", idx)
+        lock.release()
+        f_name = '/dev/shm/CAIN_TMP/preworker_tmp' + str(idx) + '.svg'
+        file = open(f_name, 'w')
+        file.write(svg_file_lines[0])
+        file.write(svg_file_lines[1])
+        line = color_to(svg_file_lines[idx + 2], '#FFFFFF')
+        file.write(line)
+        file.write(svg_file_lines[-1])
+        file.seek(0)
+        image = render_svg(f_name)
+        image = transforms.ToTensor()(image)[0].cuda()
+        image = transforms.functional.crop(image, 0, 0, frame_size[2], frame_size[3])
+        # delete fname
+        os.remove(f_name)
+        lock.acquire()
+        all_images[idx] = image
+        lock.release()
+
+def parallel_prerender(svg_file_lines, workers=16):
+    """
+    Prerender all segments in an SVG file.
+    @param svg_file_lines: The SVG file to render.
+    @param workers: The number of threads to use.
+    """
+    # creates dir if doesn't exist
+    if not os.path.exists('/dev/shm/CAIN_TMP'):
+        os.mkdir('/dev/shm/CAIN_TMP')
+    all_images = [None] * (len(svg_file_lines) - 3)
+    lock = Lock()
+    worker_queue = list(np.arange(len(svg_file_lines) - 3))
+    threads = []
+    for i in range(min(workers, len(svg_file_lines) - 3)):
+        threads.append(Thread(target=prerender_worker, args=(svg_file_lines, worker_queue, lock, all_images)))
+        threads[-1].start()
+
+    for i in range(len(threads)):
+        threads[i].join()
+
+    # print("Parallel prerender complete", len(all_images))
+    return all_images
+
+
 
 def all_segments_prerender(svg_file_lines):
     """
@@ -150,7 +227,7 @@ def render_cluster_mask(cluster, svg_file_lines, opacities=None, cluster_prerend
             cluster_full = img_tensor if cluster_full is None else cluster_full + img_tensor
         else:
             img_tensor = cluster_prerender[segment_idx]
-            img_tensor = img_tesnro if opacities is None else img_tensor * opacities[segment_idx]
+            img_tensor = img_tesnor if opacities is None else img_tensor * opacities[segment_idx]
             cluster_full = img_tensor if cluster_full is None else cluster_full + img_tensor
     if cluster_full is None:
         return torch.zeros((frame_size[2], frame_size[3])).cuda()
