@@ -331,7 +331,7 @@ class Interpolation(nn.Module):
         return out
 
 
-class Interpolation(nn.Module):
+class Interpolation_res(nn.Module):
     def __init__(self, n_resgroups, n_resblocks, n_feats,
                  act=nn.LeakyReLU(0.2, True), norm=False):
         super(Interpolation_res, self).__init__()
@@ -364,41 +364,36 @@ class Interpolation(nn.Module):
         return x
 
 class VectorIntermediateInterpolation(nn.Module):
-    def __init__(self, n_resgroups, n_resblocks, n_feats,
-                 act=nn.LeakyReLU(0.2, True), norm=False):
-        super(Interpolation_res, self).__init__()
+    def __init__(self, n_resgroups, n_resblocks, n_feats, 
+                 reduction=16, act=nn.LeakyReLU(0.2, True), norm=False):
+        super(VectorIntermediateInterpolation, self).__init__()
 
-        # define modules: head, body, tail (reduces concatenated inputs to n_feat)
+        # define modules: head, body, tail
         self.headConv = conv3x3(n_feats * 2, n_feats)
 
-        modules_body = [ResidualGroup(ResBlock, n_resblocks=n_resblocks, n_feat=n_feats, kernel_size=3,
-                            reduction=0, act=act, norm=norm)
-                        for _ in range(n_resgroups)]
+        modules_body = [
+            ResidualGroup(
+                RCAB,
+                n_resblocks=n_resblocks,
+                n_feat=n_feats,
+                kernel_size=3,
+                reduction=reduction, 
+                act=act, 
+                norm=norm)
+            for _ in range(n_resgroups)]
         self.body = nn.Sequential(*modules_body)
 
         self.tailConv = conv3x3(n_feats, n_feats)
 
     def forward(self, x0, x1, x2):
-        """
-        Args:
-            x0: input ground truth tensor
-            x1: input ground truth tensor
-            x2: input intermediate tensor to refine
-        """
-
         # Build input tensor
         x = torch.cat([x0, x1], dim=1)
         print(x.shape)
         print(x2.shape)
-        # Average x tensor and x2 tensor
-
         x = self.headConv(x)
 
-        res = x
-        for m in self.body:
-            res = m(res)
+        res = self.body(x)
         res += x
 
-        x = self.tailConv(res)
-
-        return x
+        out = self.tailConv(res)
+        return out
