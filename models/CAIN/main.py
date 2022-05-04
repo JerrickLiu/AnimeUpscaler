@@ -291,7 +291,6 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
         # TODO: Get masks from context_vectors
         # print(svg_files)
 
-        svg_frame_1_info = svg_prepad_info
         masks = torch.stack([render_clusters_correspondence(svg_files[j][0], svg_files[j][2], svg_prepad_info[j][0], svg_prepad_info[j][2], sim[j][:num_segments[j][0], :num_segments[j][2]]) for j in range(sim.shape[0])], dim=0)
         # print(len(masks))
         # print(len(masks[0]))
@@ -308,8 +307,23 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
         # print(masks.device)
         # print(images.device)
         # out = torch.sum(torch.stack([vector_model(torch.cat([images[:, 0, ...], masks[:, 0, c:c+1, ...]], dim=1), torch.cat([images[:, 2, ...], masks[:, 1, c:c+1, ...]], dim=1))[0][:, :3] for c in range(masks.shape[2])], dim=0), dim=0)
-        intermediate = torch.sum(torch.stack([vector_model(im1 * masks[:, 0, c:c+1, ...], im2 * masks[:, 1, c:c+1, ...])[0][:, :3] for c in range(masks.shape[2])], dim=0), dim=0)
-        print(out.shape)
+        # intermediate = torch.sum(torch.stack([vector_model(im1 * masks[:, 0, c:c+1, ...], im2 * masks[:, 1, c:c+1, ...])[0][:, :3] for c in range(masks.shape[2])], dim=0), dim=0)
+
+
+        # intermediate = torch.sum(torch.stack([vector_model(im1 * masks[:, 0, c:c+1, ...], im2 * masks[:, 1, c:c+1, ...])[0][:, :3] for c in range(masks.shape[2])], dim=0), dim=0)
+
+        vector_model_outputs = []
+        mask_clones = masks.clone()
+        im1_clone = im1.clone()
+        im2_clone = im2.clone()
+
+        for c in range(masks.shape[2]):
+            v_output = vector_model(im1_clone * mask_clones[:, 0, c:c+1, ...], im2_clone * mask_clones[:, 1, c:c+1, ...])[0][:, :3]
+            vector_model_outputs.append(v_output)
+        
+        stacked = torch.stack(vector_model_outputs, dim=0)
+        intermediate = torch.sum(stacked, dim=0)
+
         # intermediate_frame = torch.sum([vector_model(torch.cat(masks[ #vector_model("CHANGE ME", "CHANGE ME")
 
         # Build input batch
@@ -321,7 +335,7 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
 
         # Forward for refinement
         out, feats = model(im1, im2, intermediate)
-        loss, loss_specific = criterion(out, gt, None, feats)
+        loss, loss_specific = criterion(out, gt, intermediate, None, feats)
         
 
         # Save loss values
@@ -365,6 +379,7 @@ def test_vectorized(args, test_loader, model, vector_model, svg_encoder, context
     save_folder = 'test%03d' % epoch
     if args.dataset == 'snufilm':
         save_folder = os.path.join(save_folder, args.dataset, args.test_mode)
+        
     else:
         save_folder = os.path.join(save_folder, args.dataset)
     save_dir = os.path.join('checkpoint', args.exp_name, save_folder)
@@ -376,19 +391,54 @@ def test_vectorized(args, test_loader, model, vector_model, svg_encoder, context
 
     t = time.time()
     with torch.no_grad():
-        for i, (images, svgs, imgpaths) in enumerate(tqdm(test_loader)):
-            images = images.cuda()
+        for i, (images, svgs, num_segments, svg_files, t, svg_prepad_info) in enumerate(tqdm(test_loader)):
+            images, svgs = images.to(device), svgs.to(device)
+
             # Build input batch
             # im1, im2, gt = utils.build_input(images, imgpaths, is_training=False)
             im1 = images[:, 0, ...]
             im2 = images[:, 2, ...]
+
+
+            context_vectors = embed_svgs(svgs, svg_encoder, context_embedder)
+            # print(len(context_vectors))
+            # print(context_vectors[0].shape)
+            # print('context_vectors shape', context_vectors.shape)
+            # get cosine similarity between each frame1 and frame3 vector
+            norms = torch.norm(context_vectors, dim=2, keepdim=True)
+            context_normed = context_vectors / norms
+            frame1_batch = context_normed[0::2, :, :]
+            frame3_batch = context_normed[1::2, :, :]
+            sim = torch.bmm(frame1_batch, frame3_batch.transpose(1, 2))
+            # print(sim.shape)
+
+            # print(num_segments[i])
+            # print((sim[i][:num_segments[i][0], :num_segments[i][2]]).shape)
+
+            # TODO: Get masks from context_vectors
+            # print(svg_files)
+
+            masks = torch.stack([render_clusters_correspondence(svg_files[j][0], svg_files[j][2], svg_prepad_info[j][0], svg_prepad_info[j][2], sim[j][:num_segments[j][0], :num_segments[j][2]]) for j in range(sim.shape[0])], dim=0)
+
+            vector_model_outputs = []
+            mask_clones = masks.clone()
+            im1_clone = im1.clone()
+            im2_clone = im2.clone()
+
+            for c in range(masks.shape[2]):
+                v_output = vector_model(im1_clone * mask_clones[:, 0, c:c+1, ...], im2_clone * mask_clones[:, 1, c:c+1, ...])[0][:, :3]
+                vector_model_outputs.append(v_output)
+            
+            stacked = torch.stack(vector_model_outputs, dim=0)
+            intermediate = torch.sum(stacked, dim=0)
+
             gt = images[:, 1, ...]
 
-            # Forward
-            out, feats = model(im1, im2)
+            # Forward for refinement
+            out, feats = model(im1, im2, intermediate)
 
             # Save loss values
-            loss, loss_specific = criterion(out, gt, None, feats)
+            loss, loss_specific = criterion(out, gt, intermediate, None, feats)
             for k, v in losses.items():
                 if k != 'total':
                     v.update(loss_specific[k].item())
@@ -498,17 +548,17 @@ def main(args):
                 epoch=epoch
             )
 
-            # test_loss, psnr, _, _ = test_vectorized(
-                    # args=args,
-                    # test_loader=test_loader,
-                    # model=model,
-                    # vector_model=vector_model,
-                    # svg_encoder=svg_encoder,
-                    # context_embedder=context_embedder,
-                    # criterion=criterion,
-                    # optimizer=optimizer,
-                    # epoch=args.start_epoch
-                # )
+            test_loss, psnr, _, _ = test_vectorized(
+                    args=args,
+                    test_loader=test_loader,
+                    model=model,
+                    vector_model=vector_model,
+                    svg_encoder=svg_encoder,
+                    context_embedder=context_embedder,
+                    criterion=criterion,
+                    optimizer=optimizer,
+                    epoch=args.start_epoch
+                )
         
         else:
             train(
@@ -532,9 +582,9 @@ def main(args):
             
 
         # save checkpoint
-        # is_best = psnr > best_psnr
-        is_best = True
-        # best_psnr = max(psnr, best_psnr)
+        is_best = psnr > best_psnr
+        # is_best = True
+        best_psnr = max(psnr, best_psnr)
         utils.save_checkpoint({
             'epoch': epoch,
             'state_dict': model.state_dict(),
@@ -543,7 +593,7 @@ def main(args):
         }, is_best, args.exp_name)
 
         # update optimizer policy
-        # scheduler.step(test_loss)
+        scheduler.step(test_loss)
 
 if __name__ == "__main__":
     main(args)

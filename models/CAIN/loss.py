@@ -286,7 +286,7 @@ class Loss(nn.modules.loss._Loss):
             self.loss_module = nn.DataParallel(self.loss_module)
 
 
-    def forward(self, sr, hr, model_enc=None, feats=None, fake_imgs=None):
+    def forward(self, sr, hr, intermediate, model_enc=None, feats=None, fake_imgs=None):
         loss = 0
         losses = {}
         for i, l in enumerate(self.loss):
@@ -297,7 +297,8 @@ class Loss(nn.modules.loss._Loss):
                     _loss = l['function'](sr, hr, fake_imgs[0], fake_imgs[1], fake_imgs[2])
                 else:
                     _loss = l['function'](sr, hr)
-                effective_loss = l['weight'] * _loss
+                    intermediate_loss = l['function'](intermediate, hr)
+                effective_loss = l['weight'] * _loss + l['weight'] * intermediate_loss
                 losses[l['type']] = effective_loss
                 loss += effective_loss
             elif l['type'] == 'DIS':
