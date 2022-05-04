@@ -72,7 +72,7 @@ def build_model(args):
     elif args.model.lower() == 'cain':
         from model.cain import CAIN
         print("Building model: CAIN")
-        model = CAIN(depth=args.depth)
+        model = CAIN(depth=args.depth, vector_intermediate=True)
 
         if args.vector_model.lower() == 'attention':
             from model.vector_cain import VectorCAIN
@@ -301,26 +301,26 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
 
         # TODO: Input masks to vector_model that outputs intermediate frame
         optimizer.zero_grad()
+
+        im1 = images[:, 0, ...]
+        im2 = images[:, 2, ...]
+
         # print(masks.device)
         # print(images.device)
         # out = torch.sum(torch.stack([vector_model(torch.cat([images[:, 0, ...], masks[:, 0, c:c+1, ...]], dim=1), torch.cat([images[:, 2, ...], masks[:, 1, c:c+1, ...]], dim=1))[0][:, :3] for c in range(masks.shape[2])], dim=0), dim=0)
-        out = torch.sum(torch.stack([vector_model(images[:, 0, ...] * masks[:, 0, c:c+1, ...], images[:, 2, ...] * masks[:, 1, c:c+1, ...])[0][:, :3] for c in range(masks.shape[2])], dim=0), dim=0)
+        intermediate = torch.sum(torch.stack([vector_model(im1 * masks[:, 0, c:c+1, ...], im2 * masks[:, 1, c:c+1, ...])[0][:, :3] for c in range(masks.shape[2])], dim=0), dim=0)
         print(out.shape)
         # intermediate_frame = torch.sum([vector_model(torch.cat(masks[ #vector_model("CHANGE ME", "CHANGE ME")
 
         # Build input batch
         # im1, im2, gt = utils.build_input(images, imgpaths)
-        images = images.cuda()
         # print(images[0].shape)
         # print(images.shape)
-        im1 = images[:, 0, ...]
-        im2 = images[:, 2, ...]
         gt = images[:, 1, ...]
         # print(im1.shape)
 
-        # Forward
-        # out, feats = model(im1, im2)
-        feats = None
+        # Forward for refinement
+        out, feats = model(im1, im2, intermediate)
         loss, loss_specific = criterion(out, gt, None, feats)
         
 
