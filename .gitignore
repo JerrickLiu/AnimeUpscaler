@@ -5,4 +5,7 @@ models/AnimeInterp
 *.png
 *.jpg
 *.rs
+*.mp4
+*.svg
+*.txt
 events.out.tfevent*
