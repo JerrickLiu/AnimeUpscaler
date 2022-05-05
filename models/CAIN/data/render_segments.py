@@ -111,6 +111,8 @@ def batch_render_clusters_correspondence(svg_files, svg_infos, sim, num_segments
     for worker in workers:
         worker.join()
 
+    # print(type(all_renders))
+
     masks = torch.stack(all_renders, dim=0)
     print('Batched render complete')
     return masks
@@ -164,6 +166,9 @@ def worker_render_cluster_corr(svg_frame1, svg_frame3, svg_frame1_info, svg_fram
         # print(best_c1_per_c3.shape)
         c3_idxes = []
         for c3_idx in inverse_best[clusters1[cluster_idx]]:
+            # Hack to fix the issue with lists being numpy arrays
+            if isinstance(c3_idx, np.ndarray):
+                c3_idx = c3_idx.tolist()
             c3_idxes += c3_idx
 
         c3_render_argslist.append((c3_idxes, lines3, best_c1_per_c3_opacity[c3_idxes], cluster3_prerender))

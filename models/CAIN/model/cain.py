@@ -37,7 +37,7 @@ class Encoder(nn.Module):
         if self.vector_intermediate:
             assert intermediate is not None, "Intermediate tensor is required for vector_intermediate=True"
             feats_intermediate = self.shuffler(intermediate)
-            feats = self.interpolate(feats_intermediate)
+            feats = self.interpolate(feats1, feats2, feats_intermediate)
 
         else:
             feats = self.interpolate(feats1, feats2)
