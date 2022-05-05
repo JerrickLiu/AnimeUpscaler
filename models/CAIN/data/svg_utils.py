@@ -26,7 +26,7 @@ def load_segments(vector_file:str):
     colors = []
     transforms = []
 
-    for i in range(len(df)):
+    for i in range(min(len(df), 400)):
         color = df.iloc[i]['fill']
 
         # split color into r, g, b from hex code

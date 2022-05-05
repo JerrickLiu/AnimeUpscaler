@@ -136,11 +136,11 @@ def worker_render_cluster_corr(svg_frame1, svg_frame3, svg_frame1_info, svg_fram
     cluster1_render_argslist = [(cluster, lines1) for cluster in clusters1]
     cluster1_renders = torch.stack(parallel_map(render_cluster_mask, cluster1_render_argslist), dim=0)
 
-    if (len(lines3) - 3 != corr[0].shape[0]):
-        print("BAD")
-        print(svg_frame1, svg_frame3)
-        print(len(lines3) - 3, corr[0].shape[0])
-        sys.exit()
+    # if (len(lines3) - 3 != corr[0].shape[0]):
+        # print("BAD")
+        # print(svg_frame1, svg_frame3)
+        # print(len(lines3) - 3, corr[0].shape[0])
+        # sys.exit()
 
     # cluster3_prerender = parallel_prerender(lines3)
     best_c1_per_c3 = torch.argmax(corr, dim=0)
@@ -152,7 +152,7 @@ def worker_render_cluster_corr(svg_frame1, svg_frame3, svg_frame1_info, svg_fram
     for i in range(min(len(lines3) - 3, max_f3)):
         inverse_best[best_c1_per_c3[i]].append(i)
 
-    inverse_best = np.array(inverse_best, dtype='object')
+    # inverse_best = np.array(inverse_best, dtype='object')
     summed_correspond = torch.stack([torch.sum(corr[clusters1[c]], dim=0) for c in range(len(clusters1))], dim=0)
     #normalize summed_correspond by max value
     summed_correspond = summed_correspond / torch.max(summed_correspond, dim=0)[0]
