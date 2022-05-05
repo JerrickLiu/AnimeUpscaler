@@ -13,6 +13,8 @@ from threading import Thread, Lock
 import numpy as np
 import datetime
 
+max_f3 = 400
+
 def parallel_map(func, arglist, workers=16):
     """
     Map a function to a list of arguments in parallel.
@@ -99,6 +101,7 @@ def batch_render_clusters_correspondence(svg_files, svg_infos, sim, num_segments
     # print(len(svg_files))
     # print(sim.shape[0])
     lock = Lock()
+    print(sim.shape)
     for i in range(0, len(svg_files)):
         worker = Thread(target=worker_render_cluster_corr, args=(svg_files[i][0], svg_files[i][2], svg_infos[i][0], svg_infos[i][2], sim[i][:num_segments[i][0], :num_segments[i][2]], cluster_func, all_renders, i, lock))
         worker.start()
@@ -116,7 +119,7 @@ def worker_render_cluster_corr(svg_frame1, svg_frame3, svg_frame1_info, svg_fram
     segments1, color1, transforms1 = svg_frame1_info
     segments3, color3, transforms3 = svg_frame3_info
 
-    clusters1, segment_centroids1 = cluster_func(segments1, transforms1, color1, 2)
+    clusters1, segment_centroids1 = cluster_func(segments1, transforms1, color1, 3)
     
     lock.acquire()
     svg_file1 = open(svg_frame1, 'r')
@@ -138,13 +141,34 @@ def worker_render_cluster_corr(svg_frame1, svg_frame3, svg_frame1_info, svg_fram
         sys.exit()
 
     # cluster3_prerender = parallel_prerender(lines3)
+    best_c1_per_c3 = torch.argmax(corr, dim=0)
+    best_c1_per_c3_opacity = torch.max(corr, dim=0)[0]
+    inverse_best = [[] for i in range(len(lines1) -3)]
+    # print(corr.shape)
+    # print(best_c1_per_c3.shape)
+    # print(len(lines3) - 3)
+    for i in range(min(len(lines3) - 3, max_f3)):
+        inverse_best[best_c1_per_c3[i]].append(i)
+
+    inverse_best = np.array(inverse_best, dtype='object')
     summed_correspond = torch.stack([torch.sum(corr[clusters1[c]], dim=0) for c in range(len(clusters1))], dim=0)
     #normalize summed_correspond by max value
     summed_correspond = summed_correspond / torch.max(summed_correspond, dim=0)[0]
 
     # print(summed_correspond.shape)
     parallel_prerender_collect(prerender_threads)
-    c3_render_argslist = [(np.arange(len(lines3) - 3), lines3, summed_correspond[cluster_idx], cluster3_prerender) for cluster_idx in range(len(clusters1))]
+    c3_render_argslist = []
+    for cluster_idx in range(len(clusters1)):
+        # print(clusters1[cluster_idx])
+        # print(best_c1_per_c3)
+        # print(best_c1_per_c3.shape)
+        c3_idxes = []
+        for c3_idx in inverse_best[clusters1[cluster_idx]]:
+            c3_idxes += c3_idx
+
+        c3_render_argslist.append((c3_idxes, lines3, best_c1_per_c3_opacity[c3_idxes], cluster3_prerender))
+
+        # c3_render_argslist = [(np.arange(len(lines3) - 3)[clusters1[cluster_idx] == best_c1_per_c3], lines3, summed_correspond[cluster_idx][clusters1[cluster_idx] == best_c1_per_c3], cluster3_prerender) for cluster_idx in range(len(clusters1))]
     c3_render_list = parallel_map(render_cluster_mask, c3_render_argslist, workers=16)
     # c3_render_list = [render_cluster_mask(np.arange(len(lines3) - 3), lines3, summed_correspond[cluster_idx], cluster3_prerender) for cluster_idx in range(len(clusters1))]
     cluster3_renders = torch.stack(c3_render_list, dim=0)
@@ -254,7 +278,7 @@ def parallel_prerender_start(svg_file_lines, workers=16):
     """
     all_images = [None] * (len(svg_file_lines) - 3)
     lock = Lock()
-    worker_queue = list(np.arange(len(svg_file_lines) - 3))
+    worker_queue = list(np.arange(min(len(svg_file_lines) - 3, max_f3))) #no more than max_f3 segments will be rendered
     threads = []
     for i in range(min(workers, len(svg_file_lines) - 3)):
         threads.append(Thread(target=prerender_worker, args=(svg_file_lines, worker_queue, lock, all_images)))
@@ -352,9 +376,9 @@ def render_cluster_mask(cluster, svg_file_lines, opacities=None, cluster_prerend
             # img_tensor = img_tensor if opacities is None else img_tensor * opacities[segment_idx]
             # cluster_full = img_tensor if cluster_full is None else cluster_full + img_tensor
         # else:
-        for segment_idx in cluster:
+        for i, segment_idx in enumerate(cluster):
             img_tensor = cluster_prerender[segment_idx]
-            img_tensor = img_tesnor if opacities is None else img_tensor * opacities[segment_idx]
+            img_tensor = img_tesnor if opacities is None else img_tensor * opacities[i]
             cluster_full = img_tensor if cluster_full is None else cluster_full + img_tensor
     if cluster_full is None:
         return torch.zeros((frame_size[2], frame_size[3])).cuda()

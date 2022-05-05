@@ -103,6 +103,8 @@ def build_model(args):
     model = torch.nn.DataParallel(model).to(device)
     svg_encoder = svg_encoder.to(device)
     context_embedder = context_embedder.to(device)
+    if vector_model is not None:
+        vector_model = torch.nn.DataParallel(vector_model).to(device)
 
     return model, vector_model, svg_encoder, context_embedder
 
@@ -273,6 +275,7 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
     for i, (images, svgs, num_segments, svg_files, t, svg_prepad_info) in enumerate(train_loader):
         images, svgs = images.to(device), svgs.to(device)
 
+        optimizer.zero_grad()
         context_vectors = embed_svgs(svgs, svg_encoder, context_embedder)
         # print(len(context_vectors))
         # print(context_vectors[0].shape)
@@ -291,7 +294,8 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
         # TODO: Get masks from context_vectors
         # print(svg_files)
 
-        masks = torch.stack([render_clusters_correspondence(svg_files[j][0], svg_files[j][2], svg_prepad_info[j][0], svg_prepad_info[j][2], sim[j][:num_segments[j][0], :num_segments[j][2]]) for j in range(sim.shape[0])], dim=0)
+        # masks = torch.stack([render_clusters_correspondence(svg_files[j][0], svg_files[j][2], svg_prepad_info[j][0], svg_prepad_info[j][2], sim[j][:num_segments[j][0], :num_segments[j][2]]) for j in range(sim.shape[0])], dim=0)
+        masks = batch_render_clusters_correspondence(svg_files, svg_prepad_info, sim, num_segments)
         # print(len(masks))
         # print(len(masks[0]))
 
@@ -299,7 +303,6 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
         # print('masks', masks)
 
         # TODO: Input masks to vector_model that outputs intermediate frame
-        optimizer.zero_grad()
 
         im1 = images[:, 0, ...]
         im2 = images[:, 2, ...]
@@ -314,16 +317,14 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
 
         vector_model_outputs = []
         mask_clones = masks.clone()
-        im1_clone = im1.clone()
-        im2_clone = im2.clone()
-
         for c in range(masks.shape[2]):
+            im1_clone = im1.clone()
+            im2_clone = im2.clone()
             v_output = vector_model(im1_clone * mask_clones[:, 0, c:c+1, ...], im2_clone * mask_clones[:, 1, c:c+1, ...])[0][:, :3]
             vector_model_outputs.append(v_output)
         
         stacked = torch.stack(vector_model_outputs, dim=0)
         intermediate = torch.sum(stacked, dim=0)
-
         # intermediate_frame = torch.sum([vector_model(torch.cat(masks[ #vector_model("CHANGE ME", "CHANGE ME")
 
         # Build input batch
@@ -336,12 +337,19 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
         # Forward for refinement
         out, feats = model(im1, im2, intermediate)
         loss, loss_specific = criterion(out, gt, intermediate, None, feats)
+        loss = loss + torch.mean(sim)
         
-
         # Save loss values
         for k, v in losses.items():
             if k != 'total':
                 v.update(loss_specific[k].item())
+
+        # plt.imshow(im1[0].cpu().permute(1, 2, 0).numpy())
+        # plt.show()
+        # plt.imshow(im2[0].cpu().permute(1, 2, 0).numpy())
+        # plt.show()
+
+
         if LOSS_0 == 0:
             LOSS_0 = loss.data.item()
         losses['total'].update(loss.item())
@@ -365,7 +373,18 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
             # Log to TensorBoard
             utils.log_tensorboard(writer, losses, psnrs.avg, ssims.avg, lpips.avg,
                 optimizer.param_groups[-1]['lr'], epoch * len(train_loader) + i)
-
+            step = epoch * len(train_loader) + i
+            writer.add_images('mask1', masks[0, 0].unsqueeze(1), global_step=step)
+            writer.add_images('mask3', masks[0, 1].unsqueeze(1), global_step=step)
+            writer.add_image('intermed', intermediate[0], global_step=step)
+            writer.add_image('out', out[0], global_step=step)
+            writer.add_image('gt', gt[0], global_step=step)
+            writer.add_image('input1', im1[0], global_step=step)
+            writer.add_image('input2', im2[0], global_step=step)
+            # plt.imshow(im2[0].detach().cpu().numpy().transpose(1, 2, 0))
+            # plt.show()
+            # plt.imshow(gt[0].detach().cpu().numpy().transpose(1, 2, 0))
+            # plt.show()
             # Reset metrics
             losses, psnrs, ssims, lpips = utils.init_meters(args.loss)
             t = time.time()

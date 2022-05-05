@@ -15,6 +15,7 @@ import sys
 from .svg_utils import load_segments, post_process_svg_info
 from torch.nn.utils.rnn import pad_sequence
 import torch.nn as nn
+from .render_segments import render_svg
 
 def anime_augs(triplet):
     i, j, h, w = transforms.RandomResizedCrop.get_params(triplet[0], scale=(0.5, 1.0), ratio=(.75, 1.33))
@@ -73,13 +74,14 @@ class AnimationVectorizedDataset(Dataset):
             frame_paths[folder] = []
             vectorized_paths[folder] = []
 
-            for frame in os.listdir(video_path):
+            for frame in sorted(os.listdir(video_path)):
                 frame_path = os.path.join(video_path, frame)
                 frame_paths[folder].append(frame_path)
             
-            for frame in os.listdir(vector_path):
+            for frame in sorted(os.listdir(vector_path)):
                 frame_vector_path = os.path.join(vector_path, frame)
                 vectorized_paths[folder].append(frame_vector_path)
+            # print(frame_paths[folder][:2],'\n', vectorized_paths[folder][:2], '\n\n\n\n')
 
         return frame_paths, vectorized_paths
 
@@ -149,6 +151,7 @@ class AnimationVectorizedDataset(Dataset):
 
                 # SVG path
                 svg_file = self.vectorized_paths[folder_name][frame_index]
+                # render_svg(svg_file, show=True)
 
                 # SVG info is a list of (segments, color, transforms)
                 prepad_svg_info = list(load_segments(svg_file))

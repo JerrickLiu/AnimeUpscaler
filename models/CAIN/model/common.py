@@ -6,7 +6,8 @@ import torch.nn.functional as F
 
 def sub_mean(x):
     mean = x.mean(2, keepdim=True).mean(3, keepdim=True)
-    x -= mean
+    # x -= mean
+    x = x - mean
     return x, mean
 
 def InOutPaddings(x):

@@ -35,6 +35,13 @@ def load_segments(vector_file:str):
         colors.append(color_processed)
 
         path = df.iloc[i]['d']
+        if type(path) == float:
+            print("WTF")
+            print(path)
+            print(vector_file, i)
+            print(df.iloc[i])
+            print(df.head())
+            path = df.iloc[i-1]['d']
         curves = path.split('C')
         curves = ([(curves[i].strip().split(' ')) for i in range(len(curves))])
         curves = curves[1:] # remove the first element, which is the M0
@@ -199,7 +206,7 @@ def kmeans_centroids(segments, translations, color, k, return_seg_centroids=True
     # print(segment_centroids)
 
     # append color to segment_centroids
-    segment_centroids = np.concatenate((s_centroids, np.array(color)/20), axis=1)
+    segment_centroids = np.concatenate((s_centroids, np.array(color)/40), axis=1)
     mins = np.min(segment_centroids, axis=0)
     maxes = np.max(segment_centroids, axis=0)
     centroids = np.random.rand(k, 5)
