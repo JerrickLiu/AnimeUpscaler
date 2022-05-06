@@ -75,7 +75,9 @@ class CAIN(nn.Module):
             paddingInput, paddingOutput = InOutPaddings(x1)
             x1 = paddingInput(x1)
             x2 = paddingInput(x2)
-            intermediate = paddingInput(intermediate)
+
+            if intermediate is not None:
+                intermediate = paddingInput(intermediate)
 
         if self.vector_intermediate:
             assert intermediate is not None, 'Intermediate is None'
