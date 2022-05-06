@@ -13,7 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 import config
 import utils
 from loss import Loss
-from data import AnimeDataset, AnimeVectorizedDataset
+from data import AnimeDataset, AnimeVectorizedDataset, AnimeInterpDataset
 
 from svg_encoder import *
 from data.render_segments import *
@@ -51,7 +51,13 @@ def load_dataset(args):
 
     elif args.dataset == 'anime_vectorized':
         train_loader = AnimeVectorizedDataset.get_loader('', args.data_root + '/metadata/all_scenes.csv', args.data_root + '/extracted_frames', args.svg_dir + '/extracted_frames_vectorized', args.batch_size, True, args.num_workers, args.test_mode)
+
         test_loader = AnimeVectorizedDataset.get_loader('', args.test_data_root + '/metadata/all_scenes.csv', args.test_data_root + '/extracted_frames', args.test_svg_dir + '/extracted_frames_vectorized', args.batch_size, True, args.num_workers, args.test_mode)
+
+    elif args.dataset == 'anime_interp'
+        train_loader = AnimeInterpDataset.get_loader('', args.data_root, args.svg_dir, args.batch_size, True, args.num_workers, args.test_mode)
+
+        test_loader = AnimeInterpDataset.get_loader('', args.test_data_root, args.test_svg_dir, args.batch_size, True, args.num_workers, args.test_mode)
 
     else:
         train_loader, test_loader = utils.load_dataset(
@@ -371,11 +377,7 @@ def test_vectorized(args, test_loader, train_loader, model, vector_model, svg_en
         for i, (images, svgs, num_segments, svg_files, time_deltas, svg_prepad_info) in enumerate(tqdm(test_loader)):
             images, svgs = images.to(device), svgs.to(device)
 
-            # Build input batch
-            im1 = images[:, 0, ...]
-            im2 = images[:, 2, ...]
-            gt = images[:, 1, ...]
-
+            optimizer.zero_grad()
             context_vectors = embed_svgs(svgs, svg_encoder, context_embedder)
             norms = torch.norm(context_vectors, dim=2, keepdim=True)
             context_normed = context_vectors / norms
@@ -385,12 +387,15 @@ def test_vectorized(args, test_loader, train_loader, model, vector_model, svg_en
 
             masks = batch_render_clusters_correspondence(svg_files, svg_prepad_info, sim, num_segments)
 
+            im1 = images[:, 0, ...]
+            im2 = images[:, 2, ...]
+            gt = images[:, 1, ...]
+
             vector_model_outputs = []
             mask_clones = masks.clone()
-            im1_clone = im1.clone()
-            im2_clone = im2.clone()
-
             for c in range(masks.shape[2]):
+                im1_clone = im1.clone()
+                im2_clone = im2.clone()
                 v_output = vector_model(im1_clone * mask_clones[:, 0, c:c+1, ...], im2_clone * mask_clones[:, 1, c:c+1, ...])[0][:, :3]
                 vector_model_outputs.append(v_output)
             
@@ -399,6 +404,8 @@ def test_vectorized(args, test_loader, train_loader, model, vector_model, svg_en
 
             # Forward for refinement
             out, feats = model(im1, im2, intermediate)
+            loss, loss_specific = criterion(out, gt, intermediate, None, feats)
+            loss = loss + torch.mean(sim)
 
             # Save loss values
             loss, loss_specific = criterion(out, gt, intermediate, None, feats)
@@ -472,7 +479,13 @@ def main(args):
 
     # If resume, load checkpoint: model + optimizer
     if args.resume:
-        utils.load_checkpoint(args, model, optimizer)
+        # utils.load_checkpoint(args, model, optimizer)
+        print("Loading checkpoint...")
+        checkpoint = torch.load('pretrained_cain.pth')
+        args.start_epoch = checkpoint['epoch'] + 1
+        model.load_state_dict(checkpoint['state_dict'])
+        del checkpoint
+        print("Loaded!")
 
     # Learning Rate Scheduler
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(

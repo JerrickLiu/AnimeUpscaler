@@ -15,7 +15,6 @@ import sys
 from .svg_utils import load_segments, post_process_svg_info
 from torch.nn.utils.rnn import pad_sequence
 import torch.nn as nn
-from .render_segments import render_svg
 
 def anime_augs(triplet):
     i, j, h, w = transforms.RandomResizedCrop.get_params(triplet[0], scale=(0.5, 1.0), ratio=(.75, 1.33))
@@ -282,7 +281,7 @@ def get_loader(mode, csv, root, vector_dir, batch_size, shuffle, num_workers, te
 #     break
 
 # anime_trips = AnimationVectorizedDataset(csv, data_root, vectorized_dir)
-# triplet, svg_triplet, time_delta = anime_trips[0]
+# stuff = anime_trips[0]
 # print(svg_triplet[0].size())
 # print(svg_triplet[1].size())
 # print(svg_triplet[2].size())
