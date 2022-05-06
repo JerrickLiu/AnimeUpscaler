@@ -72,7 +72,7 @@ def build_model(args):
     elif args.model.lower() == 'cain':
         from model.cain import CAIN
         print("Building model: CAIN")
-        model = CAIN(depth=args.depth, vector_intermediate=False)
+        model = CAIN(depth=args.depth, vector_intermediate=args.vector_intermediate)
 
         if args.vector_model.lower() == 'attention':
             from model.vector_cain import VectorCAIN
@@ -301,8 +301,8 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
         intermediate = torch.sum(stacked, dim=0)
 
         # Forward for refinement
-        out, feats = model(im1, im2)
-        loss, loss_specific = criterion(out, gt, None, feats)
+        out, feats = model(im1, im2, intermediate)
+        loss, loss_specific = criterion(out, gt, intermediate, None, feats)
         loss = loss + torch.mean(sim)
         
         # Save loss values

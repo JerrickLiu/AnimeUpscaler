@@ -9,4 +9,5 @@ python main.py \
     --data_root /media/sahil/DL_5TB/MachineLearning/anime_playlist_downloads/fight_scenes_extracted_frames \
     --test_data_root /media/sahil/DL_5TB/MachineLearning/anime_playlist_downloads/test_fight_scenes \
     --svg_dir /media/sahil/DL_5TB/MachineLearning/anime_playlist_downloads/fight_scenes_extracted_frames \
-    --test_svg_dir /media/sahil/DL_5TB/MachineLearning/anime_playlist_downloads/test_fight_scenes/
+    --test_svg_dir /media/sahil/DL_5TB/MachineLearning/anime_playlist_downloads/test_fight_scenes/ \
+    --vector_intermediate
