@@ -289,8 +289,6 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
         im2 = images[:, 2, ...]
         gt = images[:, 1, ...]
 
-        out = torch.sum(torch.stack([vector_model(torch.cat([images[:, 0, ...], masks[:, 0, c:c+1, ...]], dim=1), torch.cat([images[:, 2, ...], masks[:, 1, c:c+1, ...]], dim=1))[0][:, :3] for c in range(masks.shape[2])], dim=0), dim=0)
-
         vector_model_outputs = []
         mask_clones = masks.clone()
         for c in range(masks.shape[2]):
