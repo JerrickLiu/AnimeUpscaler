@@ -72,7 +72,7 @@ if args.resume:
     #utils.load_checkpoint(args, model, optimizer=None)
     checkpoint = torch.load(args.checkpoint_path)
     args.start_epoch = checkpoint['epoch'] + 1
-    model.load_state_dict(checkpoint['state_dict'])
+    model.load_state_dict(checkpoint['cain_state_dict'])
     del checkpoint
 
 
