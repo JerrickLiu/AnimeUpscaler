@@ -110,7 +110,7 @@ def embed_svgs(svgs, SVGEncoder, ContextEmbedder):
         svg_triplet = svgs[svg_triplet_idx]
 
         svg_frame_1 = svg_triplet[0]
-        svg_frame_3 = svg_triplet[2]
+        svg_frame_3 = svg_triplet[len(svg_triplet) - 1]
 
         # print("BEFORE SVG ENCODER")
         # print(svg_frame_1.shape)

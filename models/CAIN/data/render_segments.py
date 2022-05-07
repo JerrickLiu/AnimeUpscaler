@@ -101,9 +101,9 @@ def batch_render_clusters_correspondence(svg_files, svg_infos, sim, num_segments
     # print(len(svg_files))
     # print(sim.shape[0])
     lock = Lock()
-    print(sim.shape)
+    # print(sim.shape)
     for i in range(0, len(svg_files)):
-        worker = Thread(target=worker_render_cluster_corr, args=(svg_files[i][0], svg_files[i][2], svg_infos[i][0], svg_infos[i][2], sim[i][:num_segments[i][0], :num_segments[i][2]], cluster_func, all_renders, i, lock))
+        worker = Thread(target=worker_render_cluster_corr, args=(svg_files[i][0], svg_files[i][len(svg_files[i])-1], svg_infos[i][0], svg_infos[i][len(svg_files[i])-1], sim[i][:num_segments[i][0], :num_segments[i][len(svg_files[i])-1]], cluster_func, all_renders, i, lock))
         worker.start()
         workers.append(worker)
         # render_clusters_correspondence(svg_files[i][0], svg_files[i][2], svg_infos[i][0], svg_infos[i][2], sim[i][:num_segments[i][0], :num_segments[i][2]], cluster_func, all_renders, i)
@@ -219,7 +219,7 @@ def render_clusters_correspondence(svg_frame1, svg_frame3, svg_frame1_info, svg_
     summed_correspond = torch.stack([torch.sum(correspondences[clusters1[c]], dim=0) for c in range(len(clusters1))], dim=0)
     #normalize summed_correspond by max value
     summed_correspond = summed_correspond / torch.max(summed_correspond, dim=0)[0]
-    print(summed_correspond.shape)
+    # print(summed_correspond.shape)
     c3_render_list = [render_cluster_mask(np.arange(len(lines3) - 3), lines3, summed_correspond[cluster_idx], cluster3_prerender) for cluster_idx in range(len(clusters1))]
     # print("Cluster3 renders", len(c3_render_list))
     # for c in c3_render_list:
