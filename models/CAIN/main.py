@@ -54,7 +54,7 @@ def load_dataset(args):
 
         test_loader = AnimeVectorizedDataset.get_loader('', args.test_data_root + '/metadata/all_scenes.csv', args.test_data_root + '/extracted_frames', args.test_svg_dir + '/extracted_frames_vectorized', args.batch_size, True, args.num_workers, args.test_mode)
 
-    elif args.dataset == 'anime_interp'
+    elif args.dataset == 'anime_interp':
         train_loader = AnimeInterpDataset.get_loader('', args.data_root, args.svg_dir, args.batch_size, True, args.num_workers, args.test_mode)
 
         test_loader = AnimeInterpDataset.get_loader('', args.test_data_root, args.test_svg_dir, args.batch_size, True, args.num_workers, args.test_mode)
@@ -515,7 +515,7 @@ def main(args):
         
         # run training
 
-        if args.dataset == 'anime_vectorized':
+        if args.dataset == 'anime_vectorized' or args.dataset == 'anime_interp':
             train_vectorized(
                 args=args,
                 train_loader=train_loader,
