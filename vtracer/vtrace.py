@@ -43,8 +43,12 @@ def vtrace(directory, path_to_vtracer):
 
     for root, dirs, files in tqdm(os.walk(directory)):
         for file in files:
-            if file.endswith(".png") or file.endswith(".jpg"):
+            if file.endswith(".png"):
                 output_file = output_directory + root.replace(directory, "") + "/" + file.replace(".png", ".svg")
+                fq.append((os.path.join(root, file), output_file))
+            
+            elif file.endswith(".jpg"):
+                output_file = output_directory + root.replace(directory, "") + "/" + file.replace(".jpg", ".svg")
                 fq.append((os.path.join(root, file), output_file))
                 # os.system(path_to_vtracer + " --input " + os.path.join(root, file) + " --output " + output_file)
 
