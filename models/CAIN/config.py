@@ -23,6 +23,7 @@ data_arg.add_argument('--test_data_root', type=str, default='data/vimeo_triplet'
 data_arg.add_argument('--test_svg_dir', type=str, default='data/vimeo_triplet')
 data_arg.add_argument('--checkpoint_path', type=str, default="pretrained_cain.pth")
 data_arg.add_argument('--img_fmt', type=str, default='png')
+data_arg.add_argument('--csv_file', type=str, default="all_scenes.csv")
 
 # Model
 model_arg = add_argument_group('Model')
