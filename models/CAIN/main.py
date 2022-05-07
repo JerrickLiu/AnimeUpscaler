@@ -50,9 +50,9 @@ def load_dataset(args):
         test_loader = AnimeDataset.get_loader('', args.test_data_root + '/metadata/all_scenes.csv', args.test_data_root + '/extracted_frames', args.batch_size, True, args.num_workers, args.test_mode)
 
     elif args.dataset == 'anime_vectorized':
-        train_loader = AnimeVectorizedDataset.get_loader('', args.data_root + '/metadata/all_scenes.csv', args.data_root + '/extracted_frames', args.svg_dir + '/extracted_frames_vectorized', args.batch_size, True, args.num_workers, args.test_mode)
+        train_loader = AnimeVectorizedDataset.get_loader('', args.csv, args.data_root, args.svg_dir, args.batch_size, True, args.num_workers, args.test_mode)
 
-        test_loader = AnimeVectorizedDataset.get_loader('', args.test_data_root + '/metadata/all_scenes.csv', args.test_data_root + '/extracted_frames', args.test_svg_dir + '/extracted_frames_vectorized', args.batch_size, True, args.num_workers, args.test_mode)
+        test_loader = AnimeVectorizedDataset.get_loader('', args.csv_file, args.test_data_root, args.test_svg_dir, args.batch_size, True, args.num_workers, args.test_mode)
 
     elif args.dataset == 'anime_interp':
         train_loader = AnimeInterpDataset.get_loader('', args.data_root, args.svg_dir, args.batch_size, True, args.num_workers, args.test_mode)
@@ -481,9 +481,13 @@ def main(args):
     if args.resume:
         # utils.load_checkpoint(args, model, optimizer)
         print("Loading checkpoint...")
-        checkpoint = torch.load('pretrained_cain.pth')
+        checkpoint = torch.load(args.checkpoint_path)
         args.start_epoch = checkpoint['epoch'] + 1
-        model.load_state_dict(checkpoint['state_dict'])
+        model.load_state_dict(checkpoint['cain_state_dict'])
+        vector_model.load_state_dict(checkpoint['vector_model_state_dict'])
+        svg_encoder.load_state_dict(checkpoint['svg_encoder_state_dict'])
+        context_embedder.load_state_dict(checkpoint['context_embedder_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
         del checkpoint
         print("Loaded!")
 
