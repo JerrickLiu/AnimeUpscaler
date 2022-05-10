@@ -50,9 +50,9 @@ def load_dataset(args):
         test_loader = AnimeDataset.get_loader('', args.test_data_root + '/metadata/all_scenes.csv', args.test_data_root + '/extracted_frames', args.batch_size, True, args.num_workers, args.test_mode)
 
     elif args.dataset == 'anime_vectorized':
-        train_loader = AnimeVectorizedDataset.get_loader('', args.csv, args.data_root, args.svg_dir, args.batch_size, True, args.num_workers, args.test_mode)
+        train_loader = AnimeVectorizedDataset.get_loader('', args.csv_file, args.data_root, args.svg_dir, args.batch_size, True, args.num_workers, args.test_mode)
 
-        test_loader = AnimeVectorizedDataset.get_loader('', args.csv_file, args.test_data_root, args.test_svg_dir, args.batch_size, True, args.num_workers, args.test_mode)
+        test_loader = AnimeVectorizedDataset.get_loader('', args.test_csv_file, args.test_data_root, args.test_svg_dir, args.test_batch_size, True, args.num_workers, args.test_mode)
 
     elif args.dataset == 'anime_interp':
         train_loader = AnimeInterpDataset.get_loader('', args.data_root, args.svg_dir, args.batch_size, True, args.num_workers, args.test_mode)
@@ -86,13 +86,14 @@ def build_model(args):
             vector_model = VectorCAIN(depth=args.depth)
 
         else:
+            from model.cain_encdec import CAIN_EncDec
             print("Building model: Naive VectorCAIN")
 
             # Naive vector predictor. Making CAIN smaller
             VECTOR_CAIN_N_RESGROUPS = 2
             VECTOR_CAIN_N_RESBLOCKS = 6
 
-            vector_model = CAIN(n_resgroups=VECTOR_CAIN_N_RESGROUPS, n_resblocks=VECTOR_CAIN_N_RESBLOCKS, depth=args.depth, in_channels=3)
+            vector_model = CAIN_EncDec(depth=args.depth, n_resgroups=VECTOR_CAIN_N_RESGROUPS, n_resblocks=VECTOR_CAIN_N_RESBLOCKS, in_channels=3)
 
     elif args.model.lower() == 'cain_noca':
         from model.cain_noca import CAIN_NoCA
