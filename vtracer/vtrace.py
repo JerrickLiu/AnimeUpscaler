@@ -36,15 +36,19 @@ def vtrace(directory, path_to_vtracer):
         print("The path to vtracer does not exist")
         sys.exit(1)
 
-    # output_directory = directory + "_vectorized"
-    output_directory = "./out"
+    output_directory = directory + "_vectorized"
+    # output_directory = "./out"
     if not os.path.exists(output_directory):
         shutil.copytree(directory, output_directory, ignore=ignore_files)
 
     for root, dirs, files in tqdm(os.walk(directory)):
         for file in files:
-            if file.endswith(".png") or file.endswith(".jpg"):
+            if file.endswith(".png"):
                 output_file = output_directory + root.replace(directory, "") + "/" + file.replace(".png", ".svg")
+                fq.append((os.path.join(root, file), output_file))
+            
+            elif file.endswith(".jpg"):
+                output_file = output_directory + root.replace(directory, "") + "/" + file.replace(".jpg", ".svg")
                 fq.append((os.path.join(root, file), output_file))
                 # os.system(path_to_vtracer + " --input " + os.path.join(root, file) + " --output " + output_file)
 

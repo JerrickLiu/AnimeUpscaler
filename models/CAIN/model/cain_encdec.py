@@ -8,7 +8,7 @@ from .common import *
 
 
 class Encoder(nn.Module):
-    def __init__(self, in_channels=3, depth=3, nf_start=32, norm=False):
+    def __init__(self, n_resgroups=5, n_resblocks=12, in_channels=3, depth=3, nf_start=32, norm=False, vector_intermediate=False):
         super(Encoder, self).__init__()
         self.device = torch.device('cuda')
         
@@ -25,16 +25,27 @@ class Encoder(nn.Module):
             ConvNorm(nf * 4, nf * 6, 5, stride=2, norm=norm)
         )
         
-        self.interpolate = Interpolation(5, 12, nf * 6, reduction=16, act=relu)
+        # FF_RCAN or FF_Resblocks
+        if vector_intermediate:
+            self.interpolate = VectorIntermediateInterpolation(n_resgroups, n_resblocks, nf * 6, reduction=16, act=relu)
 
-    def forward(self, x1, x2):
+        else:
+            self.interpolate = Interpolation(n_resgroups, n_resblocks, nf * 6, reduction=16, act=relu)
+
+    def forward(self, x1, x2, intermediate=None):
         """
         Encoder: Feature Extraction --> Feature Fusion --> Return
         """
         feats1 = self.body(x1)
         feats2 = self.body(x2)
 
-        feats = self.interpolate(feats1, feats2)
+        if intermediate is not None:
+            assert intermediate is not None, "Vector intermediate is none!"
+            feats_int = self.body(intermediate)
+            feats = self.interpolate(feats1, feats2, feats_int)
+
+        else:
+            feats = self.interpolate(feats1, feats2)
 
         return feats
 
@@ -67,14 +78,14 @@ class Decoder(nn.Module):
 
 
 class CAIN_EncDec(nn.Module):
-    def __init__(self, depth=3, n_resblocks=3, start_filts=32, up_mode='shuffle'):
+    def __init__(self, depth=3, n_resgroups=2, n_resblocks=3, in_channels=3, start_filts=32, up_mode='shuffle', vector_intermediate=False):
         super(CAIN_EncDec, self).__init__()
         self.depth = depth
 
-        self.encoder = Encoder(in_channels=3, depth=depth, norm=False)
+        self.encoder = Encoder(n_resgroups, n_resblocks, in_channels=in_channels, depth=depth, norm=False, vector_intermediate=vector_intermediate)
         self.decoder = Decoder(in_channels=start_filts*6, depth=depth, norm=False, up_mode=up_mode)
 
-    def forward(self, x1, x2):
+    def forward(self, x1, x2, intermediate=None):
         x1, m1 = sub_mean(x1)
         x2, m2 = sub_mean(x2)
 
@@ -83,7 +94,11 @@ class CAIN_EncDec(nn.Module):
             x1 = paddingInput(x1)
             x2 = paddingInput(x2)
 
-        feats = self.encoder(x1, x2)
+            if intermediate is not None:
+                intermediate = paddingInput(intermediate)
+
+
+        feats = self.encoder(x1, x2, intermediate)
         out = self.decoder(feats)
 
         if not self.training:

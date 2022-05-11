@@ -31,13 +31,14 @@ class Encoder(nn.Module):
         """
         Encoder: Shuffle-spread --> Feature Fusion --> Return fused features
         """
+
         feats1 = self.shuffler(x1)
         feats2 = self.shuffler(x2)
 
         if self.vector_intermediate:
             assert intermediate is not None, "Intermediate tensor is required for vector_intermediate=True"
             feats_intermediate = self.shuffler(intermediate)
-            feats = self.interpolate(feats_intermediate)
+            feats = self.interpolate(feats1, feats2, feats_intermediate)
 
         else:
             feats = self.interpolate(feats1, feats2)
@@ -74,6 +75,9 @@ class CAIN(nn.Module):
             paddingInput, paddingOutput = InOutPaddings(x1)
             x1 = paddingInput(x1)
             x2 = paddingInput(x2)
+
+            if intermediate is not None:
+                intermediate = paddingInput(intermediate)
 
         if self.vector_intermediate:
             assert intermediate is not None, 'Intermediate is None'

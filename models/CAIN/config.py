@@ -21,8 +21,11 @@ data_arg.add_argument('--orig_video_path', type=str, default=None)
 data_arg.add_argument('--save_video_path', type=str, default=None)
 data_arg.add_argument('--test_data_root', type=str, default='data/vimeo_triplet')
 data_arg.add_argument('--test_svg_dir', type=str, default='data/vimeo_triplet')
-data_arg.add_argument('--checkpoint_path', type=str, default=None)
+data_arg.add_argument('--checkpoint_path', type=str, default="pretrained_cain.pth")
 data_arg.add_argument('--img_fmt', type=str, default='png')
+data_arg.add_argument('--csv_file', type=str, default="all_scenes.csv")
+data_arg.add_argument('--test_csv_file', type=str, default="all_scenes.csv")
+
 
 # Model
 model_arg = add_argument_group('Model')
@@ -32,6 +35,7 @@ model_arg.add_argument('--depth', type=int, default=3, help='# of pooling')
 model_arg.add_argument('--n_resblocks', type=int, default=12)
 model_arg.add_argument('--n_resgroups', type=int, default=5)
 model_arg.add_argument('--up_mode', type=str, default='shuffle')
+model_arg.add_argument('--vector_intermediate', action='store_true')
 
 # Training / test parameters
 learn_arg = add_argument_group('Learning')

@@ -6,7 +6,6 @@ import torch.nn.functional as F
 
 def sub_mean(x):
     mean = x.mean(2, keepdim=True).mean(3, keepdim=True)
-    # x -= mean
     x = x - mean
     return x, mean
 
@@ -373,7 +372,7 @@ class VectorIntermediateInterpolation(nn.Module):
         super(VectorIntermediateInterpolation, self).__init__()
 
         # define modules: head, body, tail
-        self.headConv = conv3x3(n_feats, n_feats)
+        self.headConv = conv3x3(n_feats * 3, n_feats)
 
         modules_body = [
             ResidualGroup(
@@ -389,9 +388,10 @@ class VectorIntermediateInterpolation(nn.Module):
 
         self.tailConv = conv3x3(n_feats, n_feats)
 
-    def forward(self, intermediate):
+    def forward(self, x1, x2, intermediate):
         # Build input tensor
-        x = self.headConv(intermediate)
+        x = torch.cat([x1, x2, intermediate], dim=1)
+        x = self.headConv(x)
 
         res = self.body(x)
         res += x
