@@ -517,13 +517,13 @@ def main(args):
     if args.radam:
         from radam import RAdam
 
-        if args.matching_mode = 'hungarian':
+        if args.matching_mode == 'hungarian':
             optimizer = RAdam(list(model.parameters()) + list(vector_model.parameters()), lr=args.lr, betas=(args.beta1, args.beta2))
         else:
             optimizer = RAdam(list(model.parameters()) + list(vector_model.parameters()) + list(svg_encoder.parameters()) + list(context_embedder.parameters()), lr=args.lr, betas=(args.beta1, args.beta2))
     else:
         from torch.optim import Adam
-        if args.matching_mode = 'hungarian':
+        if args.matching_mode == 'hungarian':
             optimizer = Adam(list(model.parameters()) + list(vector_model.parameters()), lr=args.lr, betas=(args.beta1, args.beta2))
         else:
             optimizer = Adam(list(model.parameters()) + list(vector_model.parameters()) + list(svg_encoder.parameters()) + list(context_embedder.parameters()), lr=args.lr, betas=(args.beta1, args.beta2))
