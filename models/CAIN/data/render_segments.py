@@ -127,7 +127,7 @@ def worker_render_cluster_corr(svg_frame1, svg_frame3, svg_frame1_info, svg_fram
     segments3, color3, transforms3 = svg_frame3_info
 
     t = time.time()
-    clusters1, segment_centroids1 = cluster_func(segments1, transforms1, color1, 6)
+    clusters1, segment_centroids1 = cluster_func(segments1, transforms1, color1, 8)
     
     lock.acquire()
     svg_file1 = open(svg_frame1, 'r')
@@ -187,7 +187,7 @@ def worker_render_cluster_corr(svg_frame1, svg_frame3, svg_frame1_info, svg_fram
     all_renders[idx] = res
     lock.release()
 
-def render_clusters_correspondence(svg_frame1, svg_frame3, svg_frame1_info, svg_frame3_info, correspondences, cluster_func=kmeans_centroids, place_result=None, place_idx=None, mutex=None):
+def render_clusters_correspondence(svg_frame1, svg_frame3, svg_frame1_info, svg_frame3_info, corr, cluster_func=kmeans_centroids, place_result=None, place_idx=None, mutex=None):
     """
     Render all clusters in SVG file (frame1) and all corresponding clusters in frame3
     @param svg_frame1: svg file for frame 1
@@ -201,7 +201,7 @@ def render_clusters_correspondence(svg_frame1, svg_frame3, svg_frame1_info, svg_
     segments1, color1, transforms1 = svg_frame1_info
     segments3, color3, transforms3 = svg_frame3_info
 
-    clusters1, segment_centroids1 = cluster_func(segments1, transforms1, color1, 2)
+    clusters1, segment_centroids1 = cluster_func(segments1, transforms1, color1, 8)
     
     svg_file1 = open(svg_frame1, 'r')
     lines1 = svg_file1.readlines()
@@ -209,29 +209,57 @@ def render_clusters_correspondence(svg_frame1, svg_frame3, svg_frame1_info, svg_
 
     svg_file3 = open(svg_frame3, 'r')
     lines3 = svg_file3.readlines()
-    if (len(lines3) - 3 != correspondences[0].shape[0]):
-        print("BAD")
-        print(svg_frame1, svg_frame3)
-        print(len(lines3) - 3, correspondences[0].shape[0])
-        sys.exit()
+
+    best_c1_per_c3 = torch.argmax(corr, dim=0)
+    best_c1_per_c3_opacity = (torch.max(corr) - torch.min(corr, dim=0)[0]) / torch.max(corr) #changed to min for euclidean
+    inverse_best = [[] for i in range(len(lines1) -3)]
+
+    for i in range(min(len(lines3) - 3, max_f3)):
+        inverse_best[best_c1_per_c3[i]].append(i)
+
+    # inverse_best = np.array(inverse_best, dtype='object')
+    summed_correspond = torch.stack([torch.sum(corr[clusters1[c]], dim=0) for c in range(len(clusters1))], dim=0)
+    #normalize summed_correspond by max value
+    summed_correspond = summed_correspond / torch.max(summed_correspond, dim=0)[0]
+
+    # if (len(lines3) - 3 != correspondences[0].shape[0]):
+        # print("BAD")
+        # print(svg_frame1, svg_frame3)
+        # print(len(lines3) - 3, correspondences[0].shape[0])
+        # sys.exit()
     # print("Correspondences shape", correspondences.shape)
     # print("Clusters1", len(clusters1))
     # print("Filename1", svg_frame1)
     # print("Filename3", svg_frame3)
     # cluster3_prerender = all_segments_prerender(lines3)
-    cluster3_prerender = parallel_prerender(lines3)
+    # cluster3_prerender = parallel_prerender(lines3)
     # print("Clusters3", len(cluster3_prerender))
     # TODO: fix dim misalignment
-    summed_correspond = torch.stack([torch.sum(correspondences[clusters1[c]], dim=0) for c in range(len(clusters1))], dim=0)
+    # summed_correspond = torch.stack([torch.sum(correspondences[clusters1[c]], dim=0) for c in range(len(clusters1))], dim=0)
     #normalize summed_correspond by max value
-    summed_correspond = summed_correspond / torch.max(summed_correspond, dim=0)[0]
+    # summed_correspond = summed_correspond / torch.max(summed_correspond, dim=0)[0]
     # print(summed_correspond.shape)
-    c3_render_list = [render_cluster_mask(np.arange(len(lines3) - 3), lines3, summed_correspond[cluster_idx], cluster3_prerender) for cluster_idx in range(len(clusters1))]
+
+    c3_render_list = []
+    for cluster_idx in range(len(clusters1)):
+        # print(clusters1[cluster_idx])
+        # print(best_c1_per_c3)
+        # print(best_c1_per_c3.shape)
+        c3_idxes = []
+        inverse_select = [inverse_best[i] for i in clusters1[cluster_idx]]
+        for c3_idx in inverse_select:
+            if isinstance(c3_idx, np.ndarray):
+                c3_idx = c3_idx.tolist()
+            c3_idxes += c3_idx
+        c3_render_list.append(render_cluster_mask(c3_idxes, lines3, None, None))
+
+    cluster3_renders = torch.stack(c3_render_list, dim=0)
+    # c3_render_list = [render_cluster_mask(np.arange(len(lines3) - 3), lines3, summed_correspond[cluster_idx], cluster3_prerender) for cluster_idx in range(len(clusters1))]
     # print("Cluster3 renders", len(c3_render_list))
     # for c in c3_render_list:
         # print(type(c))
         # print(c.shape)
-    cluster3_renders = torch.stack(c3_render_list, dim=0)
+    # cluster3_renders = torch.stack(c3_render_list, dim=0)
 
     res = torch.stack([cluster1_renders, cluster3_renders], dim=0)
     if place_result is not None:

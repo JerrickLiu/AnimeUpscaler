@@ -11,9 +11,11 @@ import torch
 import cv2
 import torch.nn.functional as F
 import torchvision.transforms as TF
-from .svg_utils import load_segments, post_process_svg_info
+from .svg_utils import load_segments, post_process_svg_info, hungarian_matching
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+from .render_segments import *
+import time
 
 
 def _make_dataset(dir, vector_dir):
@@ -205,19 +207,17 @@ class AniTriplet(data.Dataset):
         svg_triplet = pad(svg_triplet, -1, [1, 2])
         svg_triplet = torch.stack(svg_triplet)
 
-        # sims = []
-        # for j in range(len(svg_files)):
-            # s1, c1, t1 = load_segments(svg_files[j][0])
-            # s2, c2, t2 = load_segments(svg_files[j][2])
-            # sim = hungarian_matching(s1, t1, s2, t2, c1, c2)
-            # sim = torch.tensor(sim)
-            # sims.append(sim)
-            # # print(num_segments[j])
-        # sim = torch.stack(sims)
+        s1, c1, t1 = load_segments(svg_files[0])
+        s2, c2, t2 = load_segments(svg_files[2])
+        sim = hungarian_matching(s1, t1, s2, t2, c1, c2)
+        sim = torch.tensor(sim)
 
-        # masks = batch_render_clusters_correspondence(svg_files, svg_prepad_info, sim, num_segments)
+        t = time.time()
+        masks = render_clusters_correspondence(svg_files[0], svg_files[2], svg_prepadded_info[0], svg_prepadded_info[2], sim[:svg_triplet_num_segments[0], :svg_triplet_num_segments[2]])
+        # print('mask done', time.time() - t)
 
-        return sample, svg_triplet, svg_triplet_num_segments, svg_files, None, svg_prepadded_info#, masks
+        # print('returning masks')
+        return sample, svg_triplet, svg_triplet_num_segments, svg_files, None, svg_prepadded_info, masks
 
     def __len__(self):
         return len(self.framesPath)
@@ -271,6 +271,7 @@ def custom_collate(batch):
     svg_files = [item[3] for item in batch]
     time_deltas = [item[4] for item in batch]
     svg_prepadded_info = [item[5] for item in batch]
+    masks_all = torch.stack([item[6] for item in batch], dim=0)
 
     svg_tensors = pad(svg_tensors, -1, [2, 3])
 
@@ -279,7 +280,7 @@ def custom_collate(batch):
     # print("BEFORE: ", svg_tensors.shape)
     svg_tensors = svg_tensors.permute(0, 1, 4, 3, 2)
 
-    return [triplets, svg_tensors, num_segments, svg_files, time_deltas, svg_prepadded_info]
+    return [triplets, svg_tensors, num_segments, svg_files, time_deltas, svg_prepadded_info, masks_all]
 
 def get_loader(mode, root, vector_dir, batch_size, shuffle, num_workers, test_mode=None):
     dataset = AniTriplet(root, vector_dir)

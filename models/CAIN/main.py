@@ -286,20 +286,21 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
 
     t = time.time()
     # Breaking compatability with original CAIN datasets
-    for i, (images, svgs, num_segments, svg_files, t, svg_prepad_info) in enumerate(train_loader):
+    for i, (images, svgs, num_segments, svg_files, t, svg_prepad_info, masks) in enumerate(train_loader):
         images, svgs = images.to(device), svgs.to(device)
 
         optimizer.zero_grad()
 
         if args.matching_mode == 'hungarian':
-            sims = []
-            for j in range(len(svg_files)):
-                s1, c1, t1 = load_segments(svg_files[j][0])
-                s2, c2, t2 = load_segments(svg_files[j][2])
-                sim = hungarian_matching(s1, t1, s2, t2, c1, c2)
-                sim = torch.tensor(sim)
-                sims.append(sim)
-            sim = torch.stack(sims)
+            pass
+            # sims = []
+            # for j in range(len(svg_files)):
+                # s1, c1, t1 = load_segments(svg_files[j][0])
+                # s2, c2, t2 = load_segments(svg_files[j][2])
+                # sim = hungarian_matching(s1, t1, s2, t2, c1, c2)
+                # sim = torch.tensor(sim)
+                # sims.append(sim)
+            # sim = torch.stack(sims)
 
         elif args.matching_mode == 'attention':
             context_vectors = embed_svgs(svgs, svg_encoder, context_embedder)
@@ -309,7 +310,8 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
             frame3_batch = context_normed[1::2, :, :]
             sim = torch.bmm(frame1_batch, frame3_batch.transpose(1, 2))
 
-        masks = batch_render_clusters_correspondence(svg_files, svg_prepad_info, sim, num_segments).cuda()
+        # masks = batch_render_clusters_correspondence(svg_files, svg_prepad_info, sim, num_segments).cuda()
+        # masks = masks.cuda()
 
         im1 = images[:, 0, ...]
         im2 = images[:, 2, ...]
@@ -318,15 +320,17 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
         vector_model_outputs = []
         mask_clones = masks.clone()
         m_losses = []
+        t = time.time()
         for c in range(masks.shape[2]):
             im1_clone = im1.clone()
             im2_clone = im2.clone()
-            v_output = vector_model(im1_clone * mask_clones[:, 0, c:c+1, ...], im2_clone * mask_clones[:, 1, c:c+1, ...])[0][:, :3]
+            v_output = vector_model(neg_mask(im1_clone, mask_clones[:, 0, c:c+1, ...]), neg_mask(im2_clone, mask_clones[:, 1, c:c+1, ...]))[0][:, :3]
             vector_model_outputs.append(v_output)
             # m_losses.append((v_output - gt * mask_clones[:, 1, c:c+1, ...]).pow(2).mean())
-        
+
         stacked = torch.stack(vector_model_outputs, dim=0)
         intermediate = torch.sum(stacked, dim=0)
+        print('intermediate', time.time() - t)
 
         # Forward for refinement
         out, feats = model(im1, im2, intermediate)
@@ -382,6 +386,9 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
             losses, psnrs, ssims, lpips = utils.init_meters(args.loss)
             t = time.time()
 
+def neg_mask(to_mask, mask):
+    return ((to_mask )) * mask.cuda()
+
 def test_vectorized(args, test_loader, train_loader, model, vector_model, svg_encoder, context_embedder, criterion, optimizer, epoch, eval_alpha=0.5):
     print('Evaluating for epoch = %d' % epoch)
     losses, psnrs, ssims, lpips = utils.init_meters(args.loss)
@@ -403,11 +410,12 @@ def test_vectorized(args, test_loader, train_loader, model, vector_model, svg_en
 
     t = time.time()
     with torch.no_grad():
-        for i, (images, svgs, num_segments, svg_files, time_deltas, svg_prepad_info) in enumerate(tqdm(test_loader)):
+        for i, (images, svgs, num_segments, svg_files, time_deltas, svg_prepad_info, masks) in enumerate(tqdm(test_loader)):
             images, svgs = images.to(device), svgs.to(device)
 
             optimizer.zero_grad()
             if args.matching_mode == 'hungarian':
+                pass
                 sims = []
                 for j in range(len(svg_files)):
                     s1, c1, t1 = load_segments(svg_files[j][0])
@@ -425,7 +433,8 @@ def test_vectorized(args, test_loader, train_loader, model, vector_model, svg_en
                 frame3_batch = context_normed[1::2, :, :]
                 sim = torch.bmm(frame1_batch, frame3_batch.transpose(1, 2))
 
-            masks = batch_render_clusters_correspondence(svg_files, svg_prepad_info, sim, num_segments)
+            # masks = batch_render_clusters_correspondence(svg_files, svg_prepad_info, sim, num_segments)
+            masks = masks.cuda()
 
             im1 = images[:, 0, ...]
             im2 = images[:, 2, ...]
@@ -436,7 +445,8 @@ def test_vectorized(args, test_loader, train_loader, model, vector_model, svg_en
             for c in range(masks.shape[2]):
                 im1_clone = im1.clone()
                 im2_clone = im2.clone()
-                v_output = vector_model(im1_clone * mask_clones[:, 0, c:c+1, ...], im2_clone * mask_clones[:, 1, c:c+1, ...])[0][:, :3]
+                # v_output = vector_model(im1_clone * mask_clones[:, 0, c:c+1, ...], im2_clone * mask_clones[:, 1, c:c+1, ...])[0][:, :3]
+                v_output = vector_model(neg_mask(im1_clone, mask_clones[:, 0, c:c+1, ...]), neg_mask(im2_clone, mask_clones[:, 1, c:c+1, ...]))[0][:, :3]
                 vector_model_outputs.append(v_output)
                 
             
