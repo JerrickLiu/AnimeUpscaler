@@ -36,6 +36,7 @@ model_arg.add_argument('--n_resblocks', type=int, default=12)
 model_arg.add_argument('--n_resgroups', type=int, default=5)
 model_arg.add_argument('--up_mode', type=str, default='shuffle')
 model_arg.add_argument('--vector_intermediate', action='store_true')
+model_arg.add_argument('--matching_mode', type=str, default='hungarian')
 
 # Training / test parameters
 learn_arg = add_argument_group('Learning')

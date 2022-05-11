@@ -290,38 +290,24 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
         images, svgs = images.to(device), svgs.to(device)
 
         optimizer.zero_grad()
-        # context_vectors = embed_svgs(svgs, svg_encoder, context_embedder)
-        # calculate euclidean distance matrix between each frame1 and frame3 vector
-        # euclidean_distances = []
-        # frame1_batch = context_vectors[0::2, :, :]
-        # frame3_batch = context_vectors[1::2, :, :]
-        # sim = torch.cdist(frame1_batch, frame3_batch, p=2)
-        # print(sim.shape)
-        sims = []
-        for j in range(len(svg_files)):
-            s1, c1, t1 = load_segments(svg_files[j][0])
-            s2, c2, t2 = load_segments(svg_files[j][2])
-            sim = hungarian_matching(s1, t1, s2, t2, c1, c2)
-            sim = torch.tensor(sim)
-            sims.append(sim)
-            # print(num_segments[j])
-        sim = torch.stack(sims)
 
+        if args.matching_mode == 'hungarian':
+            sims = []
+            for j in range(len(svg_files)):
+                s1, c1, t1 = load_segments(svg_files[j][0])
+                s2, c2, t2 = load_segments(svg_files[j][2])
+                sim = hungarian_matching(s1, t1, s2, t2, c1, c2)
+                sim = torch.tensor(sim)
+                sims.append(sim)
+            sim = torch.stack(sims)
 
-        # norms = torch.norm(context_vectors, dim=2, keepdim=True)
-
-        # context_normed = context_vectors / norms
-       
-
-        # sim = torch.bmm(frame1_batch, frame3_batch.transpose(1, 2))
-        # print(sim.shape)
-# =======
-        # norms = torch.norm(context_vectors, dim=2, keepdim=True)
-        # context_normed = context_vectors / norms
-        # frame1_batch = context_normed[0::2, :, :]
-        # frame3_batch = context_normed[1::2, :, :]
-        # sim = torch.bmm(frame1_batch, frame3_batch.transpose(1, 2))
-# >>>>>>> 2ef59d4ce6ee802439ad57304aa7164cada61426
+        elif args.matching_mode == 'attention':
+            context_vectors = embed_svgs(svgs, svg_encoder, context_embedder)
+            norms = torch.norm(context_vectors, dim=2, keepdim=True)
+            context_normed = context_vectors / norms
+            frame1_batch = context_normed[0::2, :, :]
+            frame3_batch = context_normed[1::2, :, :]
+            sim = torch.bmm(frame1_batch, frame3_batch.transpose(1, 2))
 
         masks = batch_render_clusters_correspondence(svg_files, svg_prepad_info, sim, num_segments).cuda()
 
@@ -421,35 +407,29 @@ def test_vectorized(args, test_loader, train_loader, model, vector_model, svg_en
             images, svgs = images.to(device), svgs.to(device)
 
             optimizer.zero_grad()
-            # context_vectors = embed_svgs(svgs, svg_encoder, context_embedder)
-            # norms = torch.norm(context_vectors, dim=2, keepdim=True)
-            # context_normed = context_vectors / norms
-            # frame1_batch = context_normed[0::2, :, :]
-            # frame3_batch = context_normed[1::2, :, :]
-            # sim = torch.bmm(frame1_batch, frame3_batch.transpose(1, 2))
-            
-            sims = []
-            for j in range(len(svg_files)):
-                s1, c1, t1 = load_segments(svg_files[j][0])
-                s2, c2, t2 = load_segments(svg_files[j][2])
-                sim = hungarian_matching(s1, t1, s2, t2, c1, c2)
-                sim = torch.tensor(sim)
-                sims.append(sim)
-            sim = torch.stack(sims, dim=0)
+            if args.matching_mode == 'hungarian':
+                sims = []
+                for j in range(len(svg_files)):
+                    s1, c1, t1 = load_segments(svg_files[j][0])
+                    s2, c2, t2 = load_segments(svg_files[j][2])
+                    sim = hungarian_matching(s1, t1, s2, t2, c1, c2)
+                    sim = torch.tensor(sim)
+                    sims.append(sim)
+                sim = torch.stack(sims)
+
+            elif args.matching_mode == 'attention':
+                context_vectors = embed_svgs(svgs, svg_encoder, context_embedder)
+                norms = torch.norm(context_vectors, dim=2, keepdim=True)
+                context_normed = context_vectors / norms
+                frame1_batch = context_normed[0::2, :, :]
+                frame3_batch = context_normed[1::2, :, :]
+                sim = torch.bmm(frame1_batch, frame3_batch.transpose(1, 2))
 
             masks = batch_render_clusters_correspondence(svg_files, svg_prepad_info, sim, num_segments)
 
-# <<<<<<< HEAD
-            # TODO: Get masks from context_vectors
-            # print(svg_files)
-
-            masks = batch_render_clusters_correspondence(svg_files, svg_prepad_info, sim, num_segments)
-            # masks = torch.stack([render_clusters_correspondence(svg_files[j][0], svg_files[j][2], svg_prepad_info[j][0], svg_prepad_info[j][2], sim[j][:num_segments[j][0], :num_segments[j][2]]) for j in range(sim.shape[0])], dim=0)
-# =======
             im1 = images[:, 0, ...]
             im2 = images[:, 2, ...]
             gt = images[:, 1, ...]
-# >>>>>>> 2ef59d4ce6ee802439ad57304aa7164cada61426
 
             vector_model_outputs = []
             mask_clones = masks.clone()
@@ -520,6 +500,11 @@ def test_vectorized(args, test_loader, train_loader, model, vector_model, svg_en
 """ Entry Point """
 def main(args):
 
+    matching_types = ['hungarian', 'attention']
+
+    if args.matching_mode not in matching_types:
+        raise ValueError('Unknown matching mode: %s' % args.matching_mode)
+
     # Get dataloaders
     train_loader, test_loader = load_dataset(args)
 
@@ -531,27 +516,29 @@ def main(args):
     args.radam = False
     if args.radam:
         from radam import RAdam
-        optimizer = RAdam(list(model.parameters()) + list(vector_model.parameters()), lr=args.lr, betas=(args.beta1, args.beta2))
+
+        if args.matching_mode = 'hungarian':
+            optimizer = RAdam(list(model.parameters()) + list(vector_model.parameters()), lr=args.lr, betas=(args.beta1, args.beta2))
+        else:
+            optimizer = RAdam(list(model.parameters()) + list(vector_model.parameters()) + list(svg_encoder.parameters()) + list(context_embedder.parameters()), lr=args.lr, betas=(args.beta1, args.beta2))
     else:
         from torch.optim import Adam
-        optimizer = Adam(list(model.parameters()) + list(vector_model.parameters()), lr=args.lr, betas=(args.beta1, args.beta2))
+        if args.matching_mode = 'hungarian':
+            optimizer = Adam(list(model.parameters()) + list(vector_model.parameters()), lr=args.lr, betas=(args.beta1, args.beta2))
+        else:
+            optimizer = Adam(list(model.parameters()) + list(vector_model.parameters()) + list(svg_encoder.parameters()) + list(context_embedder.parameters()), lr=args.lr, betas=(args.beta1, args.beta2))
 
     print('# of parameters: %d' % sum(p.numel() for p in model.parameters()))
 
     # If resume, load checkpoint: model + optimizer
     if args.resume:
-        # utils.load_checkpoint(args, model, optimizer)
-        print("Loading checkpoint...")
-        checkpoint = torch.load(args.checkpoint_path)
-        args.start_epoch = checkpoint['epoch'] + 1
-        model.load_state_dict(checkpoint['cain_state_dict'])
-        vector_model.load_state_dict(checkpoint['vector_model_state_dict'])
-        svg_encoder.load_state_dict(checkpoint['svg_encoder_state_dict'])
-        context_embedder.load_state_dict(checkpoint['context_embedder_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer'])
-        del checkpoint
-        print("Loaded!")
-
+        if args.matching_mode == 'hungarian':
+            utils.load_checkpoint(args, model, optimizer)
+        
+        elif args.matching_mode == 'attention':
+            utils.load_checkpoint(args, model, optimizer, svg_encoder, context_embedder)
+    
+            
     # Learning Rate Scheduler
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode='min', factor=0.5, patience=5, verbose=True)
@@ -632,15 +619,26 @@ def main(args):
         is_best = psnr > best_psnr
         # is_best = True
         best_psnr = max(psnr, best_psnr)
-        utils.save_checkpoint({
-            'epoch': epoch,
-            'cain_state_dict': model.state_dict(),
-            'vector_model_state_dict': vector_model.state_dict(),
-            'svg_encoder_state_dict': svg_encoder.state_dict(),
-            'context_embedder_state_dict': context_embedder.state_dict(), 
-            'optimizer': optimizer.state_dict(),
-            'best_psnr': best_psnr
-        }, is_best, args.exp_name)
+
+        if args.matching_mode == 'hungarian':
+            utils.save_checkpoint({
+                'epoch': epoch,
+                'cain_state_dict': model.state_dict(),
+                'vector_model_state_dict': vector_model.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'best_psnr': best_psnr
+            }, is_best, args.exp_name)
+        
+        else:
+            utils.save_checkpoint({
+                'epoch': epoch,
+                'cain_state_dict': model.state_dict(),
+                'vector_model_state_dict': vector_model.state_dict(),
+                'svg_encoder_state_dict': svg_encoder.state_dict(),
+                'context_embedder_state_dict': context_embedder.state_dict(), 
+                'optimizer': optimizer.state_dict(),
+                'best_psnr': best_psnr
+            }, is_best, args.exp_name)
 
         # update optimizer policy
         scheduler.step(test_loss)
