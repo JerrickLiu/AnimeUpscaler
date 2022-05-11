@@ -141,8 +141,8 @@ def worker_render_cluster_corr(svg_frame1, svg_frame3, svg_frame1_info, svg_fram
         # sys.exit()
 
     # cluster3_prerender = parallel_prerender(lines3)
-    best_c1_per_c3 = torch.argmax(corr, dim=0)
-    best_c1_per_c3_opacity = torch.max(corr, dim=0)[0]
+    best_c1_per_c3 = torch.argmin(corr, dim=0)
+    best_c1_per_c3_opacity = (torch.max(corr) - torch.min(corr, dim=0)[0]) / torch.max(corr) #changed to min for euclidean
     inverse_best = [[] for i in range(len(lines1) -3)]
     # print(corr.shape)
     # print(best_c1_per_c3.shape)

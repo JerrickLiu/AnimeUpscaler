@@ -119,8 +119,12 @@ def build_context_embedder():
     NUM_LAYERS = 2
 
     svg_encoder = SVGEncoder(input_size=INPUT_SIZE, embed_size=EMBED_SIZE, hidden_size=HIDDEN_SIZE, output_size=OUTPUT_SIZE, bidirectional=BIDIRECTIONAL, num_layers=NUM_LAYERS)
+    for parameter in svg_encoder.parameters():
+        parameter.requires_grad = True
 
     context_embedder = ContextEmbedder(latent_dim=OUTPUT_SIZE)
+    for parameter in context_embedder.parameters():
+        parameter.requires_grad = True
 
     return svg_encoder, context_embedder
 
@@ -269,6 +273,9 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
     losses, psnrs, ssims, lpips = utils.init_meters(args.loss)
     model.train()
     criterion.train()
+    vector_model.train()
+    svg_encoder.train()
+    context_embedder.train()
 
     t = time.time()
     # Breaking compatability with original CAIN datasets
@@ -281,11 +288,20 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
         # print(context_vectors[0].shape)
         # print('context_vectors shape', context_vectors.shape)
         # get cosine similarity between each frame1 and frame3 vector
-        norms = torch.norm(context_vectors, dim=2, keepdim=True)
-        context_normed = context_vectors / norms
-        frame1_batch = context_normed[0::2, :, :]
-        frame3_batch = context_normed[1::2, :, :]
-        sim = torch.bmm(frame1_batch, frame3_batch.transpose(1, 2))
+
+        # calculate euclidean distance matrix between each frame1 and frame3 vector
+        euclidean_distances = []
+        frame1_batch = context_vectors[0::2, :, :]
+        frame3_batch = context_vectors[1::2, :, :]
+        sim = torch.cdist(frame1_batch, frame3_batch, p=2)
+        print(sim.shape)
+
+        # norms = torch.norm(context_vectors, dim=2, keepdim=True)
+
+        # context_normed = context_vectors / norms
+       
+
+        # sim = torch.bmm(frame1_batch, frame3_batch.transpose(1, 2))
         # print(sim.shape)
 
         # print(num_segments[i])
@@ -336,13 +352,15 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
 
         # Forward for refinement
         out, feats = model(im1, im2, intermediate)
-        loss, loss_specific = criterion(out, gt, intermediate, None, feats)
-        loss = loss + torch.mean(sim)
+        # loss, loss_specific = criterion(out, gt, intermediate, None, feats)
+        # loss = loss + torch.mean(sim)
+        # loss = loss + .5* torch.mean(torch.abs(masks[:, 0, ...] - masks[:, 1, ...]))
+        loss = .5* torch.mean(torch.abs(masks[:, 0, ...] - masks[:, 1, ...]))
         
         # Save loss values
-        for k, v in losses.items():
-            if k != 'total':
-                v.update(loss_specific[k].item())
+        # for k, v in losses.items():
+            # if k != 'total':
+                # v.update(loss_specific[k].item())
 
         # plt.imshow(im1[0].cpu().permute(1, 2, 0).numpy())
         # plt.show()
@@ -356,6 +374,8 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
 
         # Backward (+ grad clip) - if loss explodes, skip current iteration
         loss.backward()
+        # for parameter in svg_encoder.parameters():
+            # print(parameter.grad)
         if loss.data.item() > 10.0 * LOSS_0:
             print(max(p.grad.data.abs().max() for p in model.parameters()))
             continue
@@ -437,7 +457,8 @@ def test_vectorized(args, test_loader, model, vector_model, svg_encoder, context
             # TODO: Get masks from context_vectors
             # print(svg_files)
 
-            masks = torch.stack([render_clusters_correspondence(svg_files[j][0], svg_files[j][2], svg_prepad_info[j][0], svg_prepad_info[j][2], sim[j][:num_segments[j][0], :num_segments[j][2]]) for j in range(sim.shape[0])], dim=0)
+            masks = batch_render_clusters_correspondence(svg_files, svg_prepad_info, sim, num_segments)
+            # masks = torch.stack([render_clusters_correspondence(svg_files[j][0], svg_files[j][2], svg_prepad_info[j][0], svg_prepad_info[j][2], sim[j][:num_segments[j][0], :num_segments[j][2]]) for j in range(sim.shape[0])], dim=0)
 
             vector_model_outputs = []
             mask_clones = masks.clone()
