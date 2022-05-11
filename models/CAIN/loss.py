@@ -297,7 +297,10 @@ class Loss(nn.modules.loss._Loss):
                     _loss = l['function'](sr, hr, fake_imgs[0], fake_imgs[1], fake_imgs[2])
                 else:
                     _loss = l['function'](sr, hr)
-                    intermediate_loss = l['function'](intermediate, hr)
+                    if intermediate is not None:
+                        intermediate_loss = l['function'](intermediate, hr)
+                    else:
+                        intermediate_loss = 0
                 effective_loss = l['weight'] * _loss + l['weight'] * intermediate_loss
                 losses[l['type']] = effective_loss
                 loss += effective_loss

@@ -205,7 +205,19 @@ class AniTriplet(data.Dataset):
         svg_triplet = pad(svg_triplet, -1, [1, 2])
         svg_triplet = torch.stack(svg_triplet)
 
-        return sample, svg_triplet, svg_triplet_num_segments, svg_files, None, svg_prepadded_info
+        # sims = []
+        # for j in range(len(svg_files)):
+            # s1, c1, t1 = load_segments(svg_files[j][0])
+            # s2, c2, t2 = load_segments(svg_files[j][2])
+            # sim = hungarian_matching(s1, t1, s2, t2, c1, c2)
+            # sim = torch.tensor(sim)
+            # sims.append(sim)
+            # # print(num_segments[j])
+        # sim = torch.stack(sims)
+
+        # masks = batch_render_clusters_correspondence(svg_files, svg_prepad_info, sim, num_segments)
+
+        return sample, svg_triplet, svg_triplet_num_segments, svg_files, None, svg_prepadded_info#, masks
 
     def __len__(self):
         return len(self.framesPath)

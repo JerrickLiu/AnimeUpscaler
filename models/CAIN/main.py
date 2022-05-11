@@ -90,10 +90,10 @@ def build_model(args):
             print("Building model: Naive VectorCAIN")
 
             # Naive vector predictor. Making CAIN smaller
-            VECTOR_CAIN_N_RESGROUPS = 2
+            VECTOR_CAIN_N_RESGROUPS = 4
             VECTOR_CAIN_N_RESBLOCKS = 6
 
-            vector_model = CAIN_EncDec(depth=args.depth, n_resgroups=VECTOR_CAIN_N_RESGROUPS, n_resblocks=VECTOR_CAIN_N_RESBLOCKS, in_channels=3)
+            vector_model = CAIN(depth=args.depth, n_resgroups=VECTOR_CAIN_N_RESGROUPS, n_resblocks=VECTOR_CAIN_N_RESBLOCKS, in_channels=3)
 
     elif args.model.lower() == 'cain_noca':
         from model.cain_noca import CAIN_NoCA
@@ -290,18 +290,23 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
         images, svgs = images.to(device), svgs.to(device)
 
         optimizer.zero_grad()
-        context_vectors = embed_svgs(svgs, svg_encoder, context_embedder)
-        # print(len(context_vectors))
-        # print(context_vectors[0].shape)
-        # print('context_vectors shape', context_vectors.shape)
-        # get cosine similarity between each frame1 and frame3 vector
-
+        # context_vectors = embed_svgs(svgs, svg_encoder, context_embedder)
         # calculate euclidean distance matrix between each frame1 and frame3 vector
-        euclidean_distances = []
-        frame1_batch = context_vectors[0::2, :, :]
-        frame3_batch = context_vectors[1::2, :, :]
-        sim = torch.cdist(frame1_batch, frame3_batch, p=2)
-        print(sim.shape)
+        # euclidean_distances = []
+        # frame1_batch = context_vectors[0::2, :, :]
+        # frame3_batch = context_vectors[1::2, :, :]
+        # sim = torch.cdist(frame1_batch, frame3_batch, p=2)
+        # print(sim.shape)
+        sims = []
+        for j in range(len(svg_files)):
+            s1, c1, t1 = load_segments(svg_files[j][0])
+            s2, c2, t2 = load_segments(svg_files[j][2])
+            sim = hungarian_matching(s1, t1, s2, t2, c1, c2)
+            sim = torch.tensor(sim)
+            sims.append(sim)
+            # print(num_segments[j])
+        sim = torch.stack(sims)
+
 
         # norms = torch.norm(context_vectors, dim=2, keepdim=True)
 
@@ -318,7 +323,7 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
         # sim = torch.bmm(frame1_batch, frame3_batch.transpose(1, 2))
 # >>>>>>> 2ef59d4ce6ee802439ad57304aa7164cada61426
 
-        masks = batch_render_clusters_correspondence(svg_files, svg_prepad_info, sim, num_segments)
+        masks = batch_render_clusters_correspondence(svg_files, svg_prepad_info, sim, num_segments).cuda()
 
         im1 = images[:, 0, ...]
         im2 = images[:, 2, ...]
@@ -326,21 +331,25 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
 
         vector_model_outputs = []
         mask_clones = masks.clone()
+        m_losses = []
         for c in range(masks.shape[2]):
             im1_clone = im1.clone()
             im2_clone = im2.clone()
             v_output = vector_model(im1_clone * mask_clones[:, 0, c:c+1, ...], im2_clone * mask_clones[:, 1, c:c+1, ...])[0][:, :3]
             vector_model_outputs.append(v_output)
+            # m_losses.append((v_output - gt * mask_clones[:, 1, c:c+1, ...]).pow(2).mean())
         
         stacked = torch.stack(vector_model_outputs, dim=0)
         intermediate = torch.sum(stacked, dim=0)
 
         # Forward for refinement
         out, feats = model(im1, im2, intermediate)
-        # loss, loss_specific = criterion(out, gt, intermediate, None, feats)
+        loss, loss_specific = criterion(out, gt, None, None, feats)
+        # loss  = loss + torch.sum(torch.stack(m_losses))
+        loss = loss + (intermediate - gt).pow(2).mean()
         # loss = loss + torch.mean(sim)
         # loss = loss + .5* torch.mean(torch.abs(masks[:, 0, ...] - masks[:, 1, ...]))
-        loss = .5* torch.mean(torch.abs(masks[:, 0, ...] - masks[:, 1, ...]))
+        # loss = .5* torch.mean(torch.abs(masks[:, 0, ...] - masks[:, 1, ...]))
         
         # Save loss values
         # for k, v in losses.items():
@@ -353,6 +362,7 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
 
         # Backward (+ grad clip) - if loss explodes, skip current iteration
         loss.backward()
+
         # for parameter in svg_encoder.parameters():
             # print(parameter.grad)
         if loss.data.item() > 10.0 * LOSS_0:
@@ -411,12 +421,21 @@ def test_vectorized(args, test_loader, train_loader, model, vector_model, svg_en
             images, svgs = images.to(device), svgs.to(device)
 
             optimizer.zero_grad()
-            context_vectors = embed_svgs(svgs, svg_encoder, context_embedder)
-            norms = torch.norm(context_vectors, dim=2, keepdim=True)
-            context_normed = context_vectors / norms
-            frame1_batch = context_normed[0::2, :, :]
-            frame3_batch = context_normed[1::2, :, :]
-            sim = torch.bmm(frame1_batch, frame3_batch.transpose(1, 2))
+            # context_vectors = embed_svgs(svgs, svg_encoder, context_embedder)
+            # norms = torch.norm(context_vectors, dim=2, keepdim=True)
+            # context_normed = context_vectors / norms
+            # frame1_batch = context_normed[0::2, :, :]
+            # frame3_batch = context_normed[1::2, :, :]
+            # sim = torch.bmm(frame1_batch, frame3_batch.transpose(1, 2))
+            
+            sims = []
+            for j in range(len(svg_files)):
+                s1, c1, t1 = load_segments(svg_files[j][0])
+                s2, c2, t2 = load_segments(svg_files[j][2])
+                sim = hungarian_matching(s1, t1, s2, t2, c1, c2)
+                sim = torch.tensor(sim)
+                sims.append(sim)
+            sim = torch.stack(sims, dim=0)
 
             masks = batch_render_clusters_correspondence(svg_files, svg_prepad_info, sim, num_segments)
 
@@ -439,6 +458,7 @@ def test_vectorized(args, test_loader, train_loader, model, vector_model, svg_en
                 im2_clone = im2.clone()
                 v_output = vector_model(im1_clone * mask_clones[:, 0, c:c+1, ...], im2_clone * mask_clones[:, 1, c:c+1, ...])[0][:, :3]
                 vector_model_outputs.append(v_output)
+                
             
             stacked = torch.stack(vector_model_outputs, dim=0)
             intermediate = torch.sum(stacked, dim=0)
@@ -446,7 +466,7 @@ def test_vectorized(args, test_loader, train_loader, model, vector_model, svg_en
             # Forward for refinement
             out, feats = model(im1, im2, intermediate)
             loss, loss_specific = criterion(out, gt, intermediate, None, feats)
-            loss = loss + torch.mean(sim)
+            # loss = loss + torch.mean(sim)
 
             # Save loss values
             loss, loss_specific = criterion(out, gt, intermediate, None, feats)
@@ -511,10 +531,10 @@ def main(args):
     args.radam = False
     if args.radam:
         from radam import RAdam
-        optimizer = RAdam(model.parameters(), lr=args.lr, betas=(args.beta1, args.beta2))
+        optimizer = RAdam(list(model.parameters()) + list(vector_model.parameters()), lr=args.lr, betas=(args.beta1, args.beta2))
     else:
         from torch.optim import Adam
-        optimizer = Adam(model.parameters(), lr=args.lr, betas=(args.beta1, args.beta2))
+        optimizer = Adam(list(model.parameters()) + list(vector_model.parameters()), lr=args.lr, betas=(args.beta1, args.beta2))
 
     print('# of parameters: %d' % sum(p.numel() for p in model.parameters()))
 

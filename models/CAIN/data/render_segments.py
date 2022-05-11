@@ -1,4 +1,5 @@
 import cairosvg
+import time
 import matplotlib.pyplot as plt
 import numpy as np
 from .svg_utils import *
@@ -12,10 +13,12 @@ from torchvision import transforms
 from threading import Thread, Lock
 import numpy as np
 import datetime
+import multiprocessing as mp
+from multiprocessing import Process, Queue
 
 max_f3 = 400
 
-def parallel_map(func, arglist, workers=16):
+def parallel_map(func, arglist, workers=4):
     """
     Map a function to a list of arguments in parallel.
 
@@ -94,9 +97,12 @@ def render_clusters(svg_file, cluster_func=kmeans_centroids):
 
 def batch_render_clusters_correspondence(svg_files, svg_infos, sim, num_segments, cluster_func=kmeans_centroids):
     # creates dir if doesn't exist
+    t = time.time()
     if not os.path.exists('/dev/shm/CAIN_TMP'):
         os.mkdir('/dev/shm/CAIN_TMP')
     workers = []
+    # manager = mp.Manager()
+    # all_renders = manager.list([None] * len(svg_files))
     all_renders = [None] * len(svg_files)
     # print(len(svg_files))
     # print(sim.shape[0])
@@ -111,15 +117,17 @@ def batch_render_clusters_correspondence(svg_files, svg_infos, sim, num_segments
     for worker in workers:
         worker.join()
 
+    all_renders = list(all_renders)
     masks = torch.stack(all_renders, dim=0)
-    print('Batched render complete')
+    print('Batched render complete, ', time.time() - t)
     return masks
 
 def worker_render_cluster_corr(svg_frame1, svg_frame3, svg_frame1_info, svg_frame3_info, corr, cluster_func, all_renders, idx, lock):
     segments1, color1, transforms1 = svg_frame1_info
     segments3, color3, transforms3 = svg_frame3_info
 
-    clusters1, segment_centroids1 = cluster_func(segments1, transforms1, color1, 3)
+    t = time.time()
+    clusters1, segment_centroids1 = cluster_func(segments1, transforms1, color1, 6)
     
     lock.acquire()
     svg_file1 = open(svg_frame1, 'r')
@@ -129,24 +137,19 @@ def worker_render_cluster_corr(svg_frame1, svg_frame3, svg_frame1_info, svg_fram
     lines3 = svg_file3.readlines()
     svg_file3.close()
     lock.release()
+    # print('read time, ', time.time() - t)
 
-    cluster3_prerender, prerender_threads = parallel_prerender_start(lines3)
+    # cluster3_prerender, prerender_threads = parallel_prerender_start(lines3)
+    # cluster3_prerender = prerender_colordiff(lines3)
+    t = time.time()
     cluster1_render_argslist = [(cluster, lines1) for cluster in clusters1]
-    cluster1_renders = torch.stack(parallel_map(render_cluster_mask, cluster1_render_argslist), dim=0)
+    cluster1_renders = torch.stack(parallel_map(render_cluster_mask, cluster1_render_argslist, workers=min(16, len(clusters1))), dim=0)#.cuda()
+    # print('render time 1, ', time.time() - t)
 
-    # if (len(lines3) - 3 != corr[0].shape[0]):
-        # print("BAD")
-        # print(svg_frame1, svg_frame3)
-        # print(len(lines3) - 3, corr[0].shape[0])
-        # sys.exit()
-
-    # cluster3_prerender = parallel_prerender(lines3)
-    best_c1_per_c3 = torch.argmin(corr, dim=0)
+    best_c1_per_c3 = torch.argmax(corr, dim=0)
     best_c1_per_c3_opacity = (torch.max(corr) - torch.min(corr, dim=0)[0]) / torch.max(corr) #changed to min for euclidean
     inverse_best = [[] for i in range(len(lines1) -3)]
-    # print(corr.shape)
-    # print(best_c1_per_c3.shape)
-    # print(len(lines3) - 3)
+
     for i in range(min(len(lines3) - 3, max_f3)):
         inverse_best[best_c1_per_c3[i]].append(i)
 
@@ -156,7 +159,7 @@ def worker_render_cluster_corr(svg_frame1, svg_frame3, svg_frame1_info, svg_fram
     summed_correspond = summed_correspond / torch.max(summed_correspond, dim=0)[0]
 
     # print(summed_correspond.shape)
-    parallel_prerender_collect(prerender_threads)
+    # parallel_prerender_collect(prerender_threads)
     c3_render_argslist = []
     for cluster_idx in range(len(clusters1)):
         # print(clusters1[cluster_idx])
@@ -169,12 +172,15 @@ def worker_render_cluster_corr(svg_frame1, svg_frame3, svg_frame1_info, svg_fram
                 c3_idx = c3_idx.tolist()
             c3_idxes += c3_idx
 
-        c3_render_argslist.append((c3_idxes, lines3, best_c1_per_c3_opacity[c3_idxes], cluster3_prerender))
+        # c3_render_argslist.append((c3_idxes, lines3, best_c1_per_c3_opacity[c3_idxes], cluster3_prerender))
+        c3_render_argslist.append((c3_idxes, lines3, None, None))
 
         # c3_render_argslist = [(np.arange(len(lines3) - 3)[clusters1[cluster_idx] == best_c1_per_c3], lines3, summed_correspond[cluster_idx][clusters1[cluster_idx] == best_c1_per_c3], cluster3_prerender) for cluster_idx in range(len(clusters1))]
-    c3_render_list = parallel_map(render_cluster_mask, c3_render_argslist, workers=16)
+    t = time.time()
+    c3_render_list = parallel_map(render_cluster_mask, c3_render_argslist, workers=min(len(clusters1), 16))
     # c3_render_list = [render_cluster_mask(np.arange(len(lines3) - 3), lines3, summed_correspond[cluster_idx], cluster3_prerender) for cluster_idx in range(len(clusters1))]
-    cluster3_renders = torch.stack(c3_render_list, dim=0)
+    cluster3_renders = torch.stack(c3_render_list, dim=0)#.cuda()
+    # print('render time 2, ', time.time() - t)
 
     res = torch.stack([cluster1_renders, cluster3_renders], dim=0)
     lock.acquire()
@@ -233,6 +239,14 @@ def render_clusters_correspondence(svg_frame1, svg_frame3, svg_frame1_info, svg_
     else:
         return res
 
+def num_to_hex(num):
+    n1 = num // 128
+    n2 = num % 128
+    r = n1
+    g = n2
+    b = 0
+    # rgb to hex string
+    return '#%02x%02x%02x' % (r, g, b)
 
 def color_to(line, color):
     #find color idx
@@ -265,13 +279,36 @@ def prerender_worker(svg_file_lines, worker_queue, lock, all_images):
         file.write(svg_file_lines[-1])
         file.seek(0)
         image = render_svg(f_name)
-        image = transforms.ToTensor()(image)[0].cuda()
+        image = transforms.ToTensor()(image)[0]#.cuda()
         image = transforms.functional.crop(image, 0, 0, frame_size[2], frame_size[3])
         # delete fname
         os.remove(f_name)
         lock.acquire()
         all_images[idx] = image
         lock.release()
+
+def prerender_colordiff(svg_file_lines):
+    date_string = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")
+    f_name = '/dev/shm/CAIN_TMP/preworker_tmp' + date_string + '.svg'
+    file = open(f_name, 'w')
+    file.write(svg_file_lines[0])
+    file.write(svg_file_lines[1])
+    for i in range(len(svg_file_lines) - 3):
+        line = color_to(svg_file_lines[i + 2], num_to_hex(i + 2))
+        file.write(line)
+    file.write(svg_file_lines[-1])
+    file.seek(0)
+    image = np.array(render_svg(f_name))
+    np_img = image[:, :, 0] * 128 + image[:, :, 1]
+    torch_img = torch.FloatTensor(np_img).cuda()
+
+    all_images = []
+    for i in range(len(svg_file_lines) - 3):
+        mask = torch_img == i + 2
+        mask = mask.float()
+        all_images.append(mask)
+
+    return all_images
 
 def parallel_prerender_start(svg_file_lines, workers=16):
     """
@@ -352,7 +389,7 @@ def render_cluster_mask(cluster, svg_file_lines, opacities=None, cluster_prerend
             cluster_file.write(line)
         cluster_file.write(svg_file_lines[-1])
         cluster_file.close()
-        cluster_full = transforms.ToTensor()(render_svg(f_name))[0].cuda()
+        cluster_full = transforms.ToTensor()(render_svg(f_name))[0]
         cluster_full = transforms.functional.crop(cluster_full, 0, 0, frame_size[2], frame_size[3]) # hard coded an arbitrary 240p size
         os.remove(f_name)
     else:
@@ -381,10 +418,10 @@ def render_cluster_mask(cluster, svg_file_lines, opacities=None, cluster_prerend
         # else:
         for i, segment_idx in enumerate(cluster):
             img_tensor = cluster_prerender[segment_idx]
-            img_tensor = img_tesnor if opacities is None else img_tensor * opacities[i]
+            img_tensor = img_tensor if opacities is None else img_tensor * opacities[i]
             cluster_full = img_tensor if cluster_full is None else cluster_full + img_tensor
     if cluster_full is None:
-        return torch.zeros((frame_size[2], frame_size[3])).cuda()
+        return torch.zeros((frame_size[2], frame_size[3]))
 
     return cluster_full
 

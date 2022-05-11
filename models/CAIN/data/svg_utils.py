@@ -7,7 +7,8 @@ from tqdm import tqdm
 import torch
 import torch.nn as nn
 import cv2
-from functools import reduce
+from functools import reduce 
+from scipy.optimize import linear_sum_assignment
 
 def load_segments(vector_file:str):
     """
@@ -213,7 +214,7 @@ def kmeans_centroids(segments, translations, color, k, return_seg_centroids=True
     centroids = centroids * (maxes - mins) + mins
 
     clusters = np.zeros(segment_centroids.shape[0], dtype=np.int)
-    for i in range(100):
+    for i in range(60):
         # assign each point to the nearest centroid
         for j in range(segment_centroids.shape[0]):
             clusters[j] = np.argmin(np.linalg.norm(segment_centroids[j] - centroids, axis=1))
@@ -233,6 +234,37 @@ def kmeans_centroids(segments, translations, color, k, return_seg_centroids=True
         return sorted_clusters, s_centroids
     return sorted_clusters
     
+
+def hungarian_matching(segments1, translations1, segments2, translations2, colors1, colors2, return_seg_centroids=False):
+    """
+    Performs Hungarian matching of the segments with cost function over weighted centroids and color.
+    """
+    # calculate the centroids of the segments
+    centroids1 = [weighted_centroid(segments1[i], translations1[i]) for i in range(len(segments1))]
+    centroids1 = np.array(centroids1)
+    centroids2 = [weighted_centroid(segments2[i], translations2[i]) for i in range(len(segments2))]
+    centroids2 = np.array(centroids2)
+
+    def cost_function(centroid1, centroid2, color1, color2):
+        # cost: weighted centroid distance + color distance
+        return np.linalg.norm(centroid1 - centroid2) + np.linalg.norm(color1 - color2)
+
+    # create cost matrix
+    cost_matrix = np.zeros((len(centroids1), len(centroids2)))
+    for i in range(len(centroids1)):
+        for j in range(len(centroids2)):
+            cost_matrix[i, j] = cost_function(centroids1[i], centroids2[j], colors1[i], colors2[j])
+
+    # perform Hungarian matching
+    row_ind, col_ind = linear_sum_assignment(cost_matrix)
+    corr = np.zeros((400,400)) # TODO magic number #(len(centroids1), len(centroids2)))
+    corr[row_ind, col_ind] = 1
+
+    if return_seg_centroids:
+        return corr, centroids1, centroids2
+    return corr
+
+
 def weighted_centroid(segment, translation):
     """
     Calculates a weighted centroid of a segment.
