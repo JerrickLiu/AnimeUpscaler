@@ -15,6 +15,7 @@ from .svg_utils import load_segments, post_process_svg_info, hungarian_matching
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from .render_segments import *
+import multiprocessing as mp
 import time
 
 
@@ -92,6 +93,7 @@ class AniTriplet(data.Dataset):
         self.framesPath         = framesPath
         self.vectorized_paths   = vector_frames_path
         self.shift              = shift
+        self.lock               = mp.Lock()
 
     def __getitem__(self, index):
         sample = []
@@ -213,7 +215,7 @@ class AniTriplet(data.Dataset):
         sim = torch.tensor(sim)
 
         t = time.time()
-        masks = render_clusters_correspondence(svg_files[0], svg_files[2], svg_prepadded_info[0], svg_prepadded_info[2], sim[:svg_triplet_num_segments[0], :svg_triplet_num_segments[2]])
+        masks = render_clusters_correspondence(svg_files[0], svg_files[2], svg_prepadded_info[0], svg_prepadded_info[2], sim[:svg_triplet_num_segments[0], :svg_triplet_num_segments[2]], mutex=self.lock)
         # print('mask done', time.time() - t)
 
         # print('returning masks')

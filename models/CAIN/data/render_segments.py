@@ -203,13 +203,20 @@ def render_clusters_correspondence(svg_frame1, svg_frame3, svg_frame1_info, svg_
 
     clusters1, segment_centroids1 = cluster_func(segments1, transforms1, color1, 8)
     
+    if mutex is not None:
+        mutex.acquire()
     svg_file1 = open(svg_frame1, 'r')
     lines1 = svg_file1.readlines()
-    cluster1_renders = torch.stack([render_cluster_mask(cluster, lines1) for cluster in clusters1], dim=0)
+    svg_file1.close()
 
     svg_file3 = open(svg_frame3, 'r')
     lines3 = svg_file3.readlines()
+    svg_file3.close()
+    if mutex is not None:
+        mutex.release()
 
+
+    cluster1_renders = torch.stack([render_cluster_mask(cluster, lines1) for cluster in clusters1], dim=0)
     best_c1_per_c3 = torch.argmax(corr, dim=0)
     best_c1_per_c3_opacity = (torch.max(corr) - torch.min(corr, dim=0)[0]) / torch.max(corr) #changed to min for euclidean
     inverse_best = [[] for i in range(len(lines1) -3)]

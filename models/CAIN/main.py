@@ -311,7 +311,8 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
             sim = torch.bmm(frame1_batch, frame3_batch.transpose(1, 2))
 
         # masks = batch_render_clusters_correspondence(svg_files, svg_prepad_info, sim, num_segments).cuda()
-        # masks = masks.cuda()
+        t = time.time()
+        masks = masks.cuda()
 
         im1 = images[:, 0, ...]
         im2 = images[:, 2, ...]
@@ -320,7 +321,6 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
         vector_model_outputs = []
         mask_clones = masks.clone()
         m_losses = []
-        t = time.time()
         for c in range(masks.shape[2]):
             im1_clone = im1.clone()
             im2_clone = im2.clone()
@@ -330,7 +330,6 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
 
         stacked = torch.stack(vector_model_outputs, dim=0)
         intermediate = torch.sum(stacked, dim=0)
-        print('intermediate', time.time() - t)
 
         # Forward for refinement
         out, feats = model(im1, im2, intermediate)
@@ -350,6 +349,7 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
             LOSS_0 = loss.data.item()
         losses['total'].update(loss.item())
 
+        print('forward', time.time() - t)
         # Backward (+ grad clip) - if loss explodes, skip current iteration
         loss.backward()
 
@@ -387,7 +387,7 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
             t = time.time()
 
 def neg_mask(to_mask, mask):
-    return ((to_mask )) * mask.cuda()
+    return ((to_mask ) * mask) 
 
 def test_vectorized(args, test_loader, train_loader, model, vector_model, svg_encoder, context_embedder, criterion, optimizer, epoch, eval_alpha=0.5):
     print('Evaluating for epoch = %d' % epoch)
@@ -416,14 +416,14 @@ def test_vectorized(args, test_loader, train_loader, model, vector_model, svg_en
             optimizer.zero_grad()
             if args.matching_mode == 'hungarian':
                 pass
-                sims = []
-                for j in range(len(svg_files)):
-                    s1, c1, t1 = load_segments(svg_files[j][0])
-                    s2, c2, t2 = load_segments(svg_files[j][2])
-                    sim = hungarian_matching(s1, t1, s2, t2, c1, c2)
-                    sim = torch.tensor(sim)
-                    sims.append(sim)
-                sim = torch.stack(sims)
+                # sims = []
+                # for j in range(len(svg_files)):
+                    # s1, c1, t1 = load_segments(svg_files[j][0])
+                    # s2, c2, t2 = load_segments(svg_files[j][2])
+                    # sim = hungarian_matching(s1, t1, s2, t2, c1, c2)
+                    # sim = torch.tensor(sim)
+                    # sims.append(sim)
+                # sim = torch.stack(sims)
 
             elif args.matching_mode == 'attention':
                 context_vectors = embed_svgs(svgs, svg_encoder, context_embedder)
