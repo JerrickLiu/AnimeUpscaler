@@ -1,13 +1,13 @@
 python main.py \
-    --exp_name VEC \
+    --exp_name AnimeInterpDataVectorIntermediate \
     --batch_size 4 \
-    --test_batch_size 1 \
-    --dataset anime_vectorized \
+    --test_batch_size 4 \
+    --dataset anime_interp \
     --model cain \
     --max_epoch 200 \
     --lr 0.0001 \
-    --data_root /media/sahil/DL_5TB/MachineLearning/anime_playlist_downloads/fight_scenes_extracted_frames \
-    --test_data_root /media/sahil/DL_5TB/MachineLearning/anime_playlist_downloads/test_fight_scenes \
-    --svg_dir /media/sahil/DL_5TB/MachineLearning/anime_playlist_downloads/fight_scenes_extracted_frames \
-    --test_svg_dir /media/sahil/DL_5TB/MachineLearning/anime_playlist_downloads/test_fight_scenes/ \
+    --data_root /mnt/WDRed/MachineLearning/data/anime/datasets_424_240/train_10k \
+    --test_data_root /mnt/WDRed/MachineLearning/data/anime/datasets_424_240/test_2k_540p \
+    --svg_dir /mnt/WDRed/MachineLearning/data/anime/datasets_424_240/train_10k_vectorized \
+    --test_svg_dir /mnt/WDRed/MachineLearning/data/anime/datasets_424_240/test_2k_540p_vectorized \
     --vector_intermediate

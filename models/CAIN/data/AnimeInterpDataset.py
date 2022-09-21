@@ -150,14 +150,9 @@ class AniTriplet(data.Dataset):
         #     inter = 1
         #     shifts = [(0, 0), (0, 0)]
 
-        frame_size = (1, 3, 240, 424)
-        
         frameRange = [0, 1, 2]
         # Loop over for all frames corresponding to the `index`.
         for frameIndex in frameRange:
-            # Open image using pil and augment the image.
-
-            # image = _pil_loader(self.framesPath[index][frameIndex], cropArea=cropArea[frameIndex],  resizeDim=self.resizeSize, frameFlip=randomFrameFlip)
             image_path = self.framesPath[index][frameIndex]
             svg_file = self.vectorized_paths[index][frameIndex]
 
@@ -172,8 +167,6 @@ class AniTriplet(data.Dataset):
 
             image = _pil_loader(self.framesPath[index][frameIndex], resizeDim=self.resizeSize)
             # image.save(str(frameIndex) + '.jpg')
-
-
 
             # SVG info is a list of (segments, color, transforms)
             prepad_svg_info = list(load_segments(svg_file))
@@ -196,8 +189,8 @@ class AniTriplet(data.Dataset):
             if self.transform is not None:
                 image = self.transform(image)
             
-            image = TF.ToTensor()(image)
-            sample.append(image.reshape(frame_size))
+            image = TF.ToTensor()(image).unsqueeze(0)
+            sample.append(image)
             svg_triplet.append(svg_tensor)
             svg_triplet_num_segments.append(num_segments)
             svg_files.append(svg_file)
@@ -215,10 +208,7 @@ class AniTriplet(data.Dataset):
         sim = torch.tensor(sim)
 
         t = time.time()
-        masks = render_clusters_correspondence(svg_files[0], svg_files[2], svg_prepadded_info[0], svg_prepadded_info[2], sim[:svg_triplet_num_segments[0], :svg_triplet_num_segments[2]], mutex=self.lock)
-        # print('mask done', time.time() - t)
-
-        # print('returning masks')
+        masks = render_clusters_correspondence(svg_files[0], svg_files[2], svg_prepadded_info[0], svg_prepadded_info[2], sim[:svg_triplet_num_segments[0], :svg_triplet_num_segments[2]], mutex=self.lock, frame_size=(self.resizeSize[1], self.resizeSize[0]))
         return sample, svg_triplet, svg_triplet_num_segments, svg_files, None, svg_prepadded_info, masks
 
     def __len__(self):

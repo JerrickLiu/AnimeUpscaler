@@ -36,8 +36,10 @@ def vtrace(directory, path_to_vtracer):
         print("The path to vtracer does not exist")
         sys.exit(1)
 
+    # Strip the trailing slash if it exists
+    if directory[-1] == "/":
+        directory = directory[:-1]
     output_directory = directory + "_vectorized"
-    # output_directory = "./out"
     if not os.path.exists(output_directory):
         shutil.copytree(directory, output_directory, ignore=ignore_files)
 

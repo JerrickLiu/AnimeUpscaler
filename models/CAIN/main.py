@@ -217,7 +217,6 @@ def test(args, test_loader, model, criterion, optimizer, epoch, eval_alpha=0.5):
         for i, (images, imgpaths) in enumerate(tqdm(test_loader)):
             images = images.cuda()
             # Build input batch
-            # im1, im2, gt = utils.build_input(images, imgpaths, is_training=False)
             im1 = images[:, 0, ...]
             im2 = images[:, 2, ...]
             gt = images[:, 1, ...]
@@ -234,27 +233,7 @@ def test(args, test_loader, model, criterion, optimizer, epoch, eval_alpha=0.5):
 
             # Evaluate metrics
             utils.eval_metrics(out, gt, psnrs, ssims, lpips)
-
-            # Log examples that have bad performance
-            # if (ssims.val < 0.9 or psnrs.val < 25) and epoch > 50:
-                # print(imgpaths)
-                # print("\nLoss: %f, PSNR: %f, SSIM: %f, LPIPS: %f" %
-                      # (losses['total'].val, psnrs.val, ssims.val, lpips.val))
-                # print(imgpaths[1][-1])
-
-            # # Save result images
-            # if ((epoch + 1) % 1 == 0 and i < 20) or args.mode == 'test':
-                # savepath = os.path.join('checkpoint', args.exp_name, save_folder)
-
-                # for b in range(images[0].size(0)):
-                    # paths = imgpaths[1][b].split('/')
-                    # fp = os.path.join(savepath, paths[-3], paths[-2])
-                    # if not os.path.exists(fp):
-                        # os.makedirs(fp)
-                    # # remove '.png' extension
-                    # fp = os.path.join(fp, paths[-1][:-4])
-            #         utils.save_image(out[b], "%s.png" % fp)
-                    
+   
     # Print progress
     print('im_processed: {:d}/{:d} {:.3f}s   \r'.format(i + 1, len(test_loader), time.time() - t))
     print("Loss: %f, PSNR: %f, SSIM: %f, LPIPS: %f\n" %
@@ -284,6 +263,8 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
     svg_encoder.train()
     context_embedder.train()
 
+    SAVE_PATH = "/home/jerrick/Documents/projects/AnimeUpscaler/models/CAIN/train_images"
+
     t = time.time()
     # Breaking compatability with original CAIN datasets
     for i, (images, svgs, num_segments, svg_files, t, svg_prepad_info, masks) in enumerate(train_loader):
@@ -292,15 +273,8 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
         optimizer.zero_grad()
 
         if args.matching_mode == 'hungarian':
+            # Matching done in dataloader
             pass
-            # sims = []
-            # for j in range(len(svg_files)):
-                # s1, c1, t1 = load_segments(svg_files[j][0])
-                # s2, c2, t2 = load_segments(svg_files[j][2])
-                # sim = hungarian_matching(s1, t1, s2, t2, c1, c2)
-                # sim = torch.tensor(sim)
-                # sims.append(sim)
-            # sim = torch.stack(sims)
 
         elif args.matching_mode == 'attention':
             context_vectors = embed_svgs(svgs, svg_encoder, context_embedder)
@@ -309,8 +283,7 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
             frame1_batch = context_normed[0::2, :, :]
             frame3_batch = context_normed[1::2, :, :]
             sim = torch.bmm(frame1_batch, frame3_batch.transpose(1, 2))
-
-        # masks = batch_render_clusters_correspondence(svg_files, svg_prepad_info, sim, num_segments).cuda()
+            masks = batch_render_clusters_correspondence(svg_files, svg_prepad_info, sim, num_segments)
         t = time.time()
         masks = masks.cuda()
 
@@ -324,7 +297,8 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
         for c in range(masks.shape[2]):
             im1_clone = im1.clone()
             im2_clone = im2.clone()
-            v_output = vector_model(neg_mask(im1_clone, mask_clones[:, 0, c:c+1, ...]), neg_mask(im2_clone, mask_clones[:, 1, c:c+1, ...]))[0][:, :3]
+            vector_model_input1, vector_model_input2 = neg_mask(im1_clone, mask_clones[:, 0, c:c+1, ...]), neg_mask(im2_clone, mask_clones[:, 1, c:c+1, ...])
+            v_output = vector_model(vector_model_input1, vector_model_input2)[0][:, :3]
             vector_model_outputs.append(v_output)
             # m_losses.append((v_output - gt * mask_clones[:, 1, c:c+1, ...]).pow(2).mean())
 
@@ -348,8 +322,6 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
         if LOSS_0 == 0:
             LOSS_0 = loss.data.item()
         losses['total'].update(loss.item())
-
-        print('forward', time.time() - t)
         # Backward (+ grad clip) - if loss explodes, skip current iteration
         loss.backward()
 
@@ -378,6 +350,12 @@ def train_vectorized(args, train_loader, model, vector_model, svg_encoder, conte
             writer.add_image('gt', gt[0], global_step=step)
             writer.add_image('input1', im1[0], global_step=step)
             writer.add_image('input2', im2[0], global_step=step)
+            # Also save these images
+            utils.save_image(out[0], os.path.join(SAVE_PATH, 'out', '{:04d}.png'.format(i)))
+            utils.save_image(intermediate[0], os.path.join(SAVE_PATH, 'intermediate', '{:04d}.png'.format(i)))
+            utils.save_image(masks[0, 0], os.path.join(SAVE_PATH, 'mask1', '{:04d}.png'.format(i)))
+            utils.save_image(masks[0, 1], os.path.join(SAVE_PATH, 'mask3', '{:04d}.png'.format(i)))
+
             # plt.imshow(im2[0].detach().cpu().numpy().transpose(1, 2, 0))
             # plt.show()
             # plt.imshow(gt[0].detach().cpu().numpy().transpose(1, 2, 0))
@@ -459,8 +437,6 @@ def test_vectorized(args, test_loader, train_loader, model, vector_model, svg_en
             # loss = loss + torch.mean(sim)
 
             # Save loss values
-            loss, loss_specific = criterion(out, gt, intermediate, None, feats)
-            loss = loss + torch.mean(sim)
             for k, v in losses.items():
                 if k != 'total':
                     v.update(loss_specific[k].item())
@@ -468,26 +444,6 @@ def test_vectorized(args, test_loader, train_loader, model, vector_model, svg_en
 
             # Evaluate metrics
             utils.eval_metrics(out, gt, psnrs, ssims, lpips)
-
-            # Log examples that have bad performance
-            # if (ssims.val < 0.9 or psnrs.val < 25) and epoch > 50:
-                # print(imgpaths)
-                # print("\nLoss: %f, PSNR: %f, SSIM: %f, LPIPS: %f" %
-                      # (losses['total'].val, psnrs.val, ssims.val, lpips.val))
-                # print(imgpaths[1][-1])
-
-            # # Save result images
-            # if ((epoch + 1) % 1 == 0 and i < 20) or args.mode == 'test':
-                # savepath = os.path.join('checkpoint', args.exp_name, save_folder)
-
-                # for b in range(images[0].size(0)):
-                    # paths = imgpaths[1][b].split('/')
-                    # fp = os.path.join(savepath, paths[-3], paths[-2])
-                    # if not os.path.exists(fp):
-                        # os.makedirs(fp)
-                    # # remove '.png' extension
-                    # fp = os.path.join(fp, paths[-1][:-4])
-            #         utils.save_image(out[b], "%s.png" % fp)
                     
     # Print progress
     print('im_processed: {:d}/{:d} {:.3f}s   \r'.format(i + 1, len(test_loader), time.time() - t))
@@ -590,6 +546,26 @@ def main(args):
                 lpips_model=lpips_model,
                 epoch=epoch
             )
+
+            if args.matching_mode == 'hungarian':
+                utils.save_checkpoint({
+                    'epoch': epoch,
+                    'cain_state_dict': model.state_dict(),
+                    'vector_model_state_dict': vector_model.state_dict(),
+                    'optimizer': optimizer.state_dict(),
+                    'best_psnr': best_psnr
+                }, True, args.exp_name)
+            
+            else:
+                utils.save_checkpoint({
+                    'epoch': epoch,
+                    'cain_state_dict': model.state_dict(),
+                    'vector_model_state_dict': vector_model.state_dict(),
+                    'svg_encoder_state_dict': svg_encoder.state_dict(),
+                    'context_embedder_state_dict': context_embedder.state_dict(), 
+                    'optimizer': optimizer.state_dict(),
+                    'best_psnr': best_psnr
+                }, True, args.exp_name)
 
             test_loss, psnr, _, _ = test_vectorized(
                     args=args,

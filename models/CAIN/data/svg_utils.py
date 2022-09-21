@@ -22,7 +22,7 @@ def load_segments(vector_file:str):
         print('Not a svg file')
         return
 
-    df = pd.read_xml(vector_file)
+    df = pd.read_xml(vector_file, parser="etree")
     segments = []
     colors = []
     transforms = []
@@ -100,9 +100,9 @@ def post_process_svg_info(svg_info):
     for i in range(len(segments)):
         segments[i] = np.pad(segments[i], ((0, max_len - segments[i].shape[0]), (0, 0)), constant_values=-1)
     
-    segments = torch.Tensor(segments)
-    colors = torch.Tensor(colors).unsqueeze(1).expand(-1, max_len, -1)
-    transforms = torch.Tensor(transforms).unsqueeze(1).expand(-1, max_len, -1)
+    segments = torch.Tensor(np.array(segments))
+    colors = torch.Tensor(np.array(colors)).unsqueeze(1).expand(-1, max_len, -1)
+    transforms = torch.Tensor(np.array(transforms)).unsqueeze(1).expand(-1, max_len, -1)
 
     return segments, colors, transforms
 
@@ -203,8 +203,6 @@ def kmeans_centroids(segments, translations, color, k, return_seg_centroids=True
     """
     s_centroids = [weighted_centroid(segments[i], translations[i]) for i in range(len(segments))]
     s_centroids = np.array(s_centroids) # (#segments, 2)
-    # print(s_centroids.shape)
-    # print(segment_centroids)
 
     # append color to segment_centroids
     segment_centroids = np.concatenate((s_centroids, np.array(color)/40), axis=1)
@@ -218,7 +216,6 @@ def kmeans_centroids(segments, translations, color, k, return_seg_centroids=True
         # assign each point to the nearest centroid
         for j in range(segment_centroids.shape[0]):
             clusters[j] = np.argmin(np.linalg.norm(segment_centroids[j] - centroids, axis=1))
-        # print(clusters)
         # update the centroids
         for j in range(k):
             if np.sum(clusters == j) == 0:

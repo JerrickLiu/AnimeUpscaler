@@ -1,5 +1,5 @@
 #!/bin/bash
 
 python vtrace.py \
-    /media/sahil/DL_5TB/MachineLearning/anime_playlist_downloads/test_fight_scenes/naruto_original \
-    vtracer
+    /mnt/WDRed/MachineLearning/data/anime/datasets_424_240/test_2k_540p \
+    /home/jerrick/Documents/projects/AnimeUpscaler/vtracer/vtracer
